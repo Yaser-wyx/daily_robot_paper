@@ -4,10 +4,8 @@ import json
 import time
 import requests
 import subprocess
-import io
 from datetime import datetime
 from bs4 import BeautifulSoup
-from pypdf import PdfReader
 
 # ================= ⚙️ 配置区域 (Configuration) =================
 
@@ -70,18 +68,12 @@ def fetch_arxiv_papers():
 
         # 3. 提取 Authors
         authors_div = dd.find('div', class_='list-authors')
-        authors = authors_div.text.replace('Authors:', '').strip().replace('
-', ' ') if authors_div else "Unknown"
+        authors = authors_div.text.replace('Authors:', '').strip().replace('\n', ' ') if authors_div else "Unknown"
 
         # 4. 提取 Abstract (Arxiv list页面通常在 <p class='mathjax'> 中)
         abstract_p = dd.find('p', class_='mathjax')
-        abstract = abstract_p.text.strip().replace('
-', ' ') if abstract_p else "Abstract not available in list view."
-        
-        # Logging for Abstract
-        if not abstract or abstract == "Abstract not available in list view.":
-             print(f"⚠️ [Warning] Abstract missing for: {title[:30]}...")
-        
+        abstract = abstract_p.text.strip().replace('\n', ' ') if abstract_p else "Abstract not available in list view."
+
         papers.append({
             "id": paper_id,
             "title": title,
@@ -123,42 +115,12 @@ def clean_json_string(text):
         return match.group(0)
     return text
 
-def download_and_extract_pdf(paper_id):
-    """下载 PDF 并提取全文内容"""
-    pdf_url = f"https://arxiv.org/pdf/{paper_id}.pdf"
-    print(f"    ⬇️  Downloading PDF: {pdf_url} ...")
-    
-    headers = {
-        'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
-    }
-    
-    try:
-        response = requests.get(pdf_url, headers=headers, timeout=30)
-        response.raise_for_status()
-        
-        print(f"    📄 Parsing PDF content...")
-        with io.BytesIO(response.content) as f:
-            reader = PdfReader(f)
-            text = ""
-            for page in reader.pages:
-                text += page.extract_text() + "
-"
-        
-        # Simple cleaning
-        text = re.sub(r'\s+', ' ', text).strip()
-        print(f"    ✅ PDF Extracted: {len(text)} chars.")
-        return text
-    except Exception as e:
-        print(f"    ⚠️ PDF Download/Parse Failed: {e}")
-        return None
-
 
 # ================= 👨‍🏫 阶段二: 主编部 (The Editor-in-Chief) =================
 
 def editor_screening(papers):
     """生成简报并筛选需要精读的论文"""
-    print("
-🧐 [Editor] 正在阅读论文列表并撰写简报...")
+    print("\n🧐 [Editor] 正在阅读论文列表并撰写简报...")
 
     # 构造上下文数据 (截断摘要以节省 Token)
     papers_context = ""
@@ -166,12 +128,7 @@ def editor_screening(papers):
         # 检查是否包含 VIP 作者 (仅用于标记，LLM也会再次检查)
         is_vip = any(vip in p['authors'] for vip in VIP_AUTHORS)
         prefix = "★ [VIP AUTHOR] " if is_vip else ""
-        papers_context += f"ID: {p['id']}
-Title: {prefix}{p['title']}
-Authors: {p['authors']}
-Abstract: {p['abstract'][:300]}...
-
-"
+        papers_context += f"ID: {p['id']}\nTitle: {prefix}{p['title']}\nAuthors: {p['authors']}\nAbstract: {p['abstract'][:300]}...\n\n"
 
     today_str = datetime.now().strftime("%Y-%m-%d %A")
 
@@ -219,8 +176,7 @@ Ensure the output is valid raw JSON text. Do not wrap it in markdown code blocks
         print(f"✅ [Editor] 简报生成完毕，选中了 {len(data.get('selected_ids', []))} 篇论文进行精读。")
         return data.get("summary_content", ""), data.get("selected_ids", [])
     except json.JSONDecodeError as e:
-        print(f"❌ JSON 解析失败 (LLM 输出格式错误): {e}
-Raw Output: {response[:200]}...")
+        print(f"❌ JSON 解析失败 (LLM 输出格式错误): {e}\nRaw Output: {response[:200]}...")
         # Fallback: 如果解析失败，返回原始文本，且不选精读论文
         return response, []
 
@@ -230,25 +186,11 @@ Raw Output: {response[:200]}...")
 def researcher_deep_dive(paper_info):
     """对单篇论文进行深度拆解"""
     print(f"    🔍 [Researcher] 正在深度解读: {paper_info['title'][:40]}...")
-    
-    # Try to get full text
-    full_text = download_and_extract_pdf(paper_info['id'])
-    
-    # If PDF extraction failed, fall back to abstract, but warn in prompt
-    context_content = ""
-    if full_text:
-        # Truncate to avoid context limit (e.g., first 50k chars is usually enough for key info)
-        context_content = f"FULL PDF CONTENT (Truncated to first 30000 chars):
-{full_text[:30000]}..."
-    else:
-        context_content = f"ABSTRACT ONLY (PDF Download Failed):
-{paper_info['abstract']}"
 
     prompt = f"""
 你是一个高级算法科研人员。请对论文《{paper_info['title']}》进行类似 Notion 笔记风格的深度拆解。
 
-**输入内容**:
-{context_content}
+摘要内容：{paper_info['abstract']}
 
 **请按照以下 Markdown 格式输出（Heading Level 使用 ### 和 ####，不要使用 # 或 ##）：**
 
@@ -281,8 +223,7 @@ def researcher_deep_dive(paper_info):
 
 def publish_report(summary, deep_dives):
     """组装并写入文件"""
-    print("
-🖨️ [Publisher] 正在组装日报...")
+    print("\n🖨️ [Publisher] 正在组装日报...")
 
     date_str = datetime.now().strftime("%Y-%m-%d")
     if not os.path.exists(OUTPUT_DIR):
@@ -290,20 +231,13 @@ def publish_report(summary, deep_dives):
 
     filename = f"{OUTPUT_DIR}/{date_str}-RoboPulse.md"
 
-    full_content = f"{summary}
-
-"
+    full_content = f"{summary}\n\n"
 
     if deep_dives:
-        full_content += "# 📚 Selected Papers Deep Dive (深度拆解)
-
-"
-        full_content += "---
-
-".join(deep_dives)
+        full_content += "# 📚 Selected Papers Deep Dive (深度拆解)\n\n"
+        full_content += "---\n\n".join(deep_dives)
     else:
-        full_content += "
-*(今日无重点论文深度拆解)*"
+        full_content += "\n*(今日无重点论文深度拆解)*"
 
     with open(filename, 'w', encoding='utf-8') as f:
         f.write(full_content)
