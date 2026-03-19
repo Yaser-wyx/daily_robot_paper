@@ -1,60 +1,104 @@
-# RoboPulse: Daily Arxiv Robotics Report
+# RoboPulse
 
-This project automates the generation of daily reports for new robotics papers from Arxiv (specifically `cs.RO`). It uses Google Gemini to analyze, summarize, and highlight key papers based on your interests.
+RoboPulse generates a daily robotics paper briefing from arXiv `cs.RO`.
 
-## Features
+It uses:
 
-- **Automated Fetching**: Retrieves the latest submissions from Arxiv.
-- **AI Analysis**: Uses Gemini Pro to screen papers for relevance (VLA, Sim2Real, World Models, etc.) and identify VIP authors.
-- **Deep Dives**: Generates detailed "Notion-style" breakdowns for high-value papers.
-- **Web Interface**: A simple, clean web interface to browse and read daily reports.
+- `codex exec` for local screening and summary generation
+- ChatGPT Web as the manual deep-reading handoff
+- a FastAPI dashboard for browsing daily reports
 
 ## Setup
 
-1.  **Install Dependencies**:
-    This project uses `uv` for package management.
-    ```bash
-    uv sync
-    ```
-    Or install manually:
-    ```bash
-    pip install fastapi uvicorn requests beautifulsoup4 markdown
-    ```
+Install dependencies:
 
-2.  **Configuration**:
-    - Ensure you have the `gemini` CLI tool installed and configured with your API key.
-    - Customize keywords and authors in `daily.py` if needed.
+```bash
+uv sync
+```
 
-## Usage
+Or:
 
-### 1. Generate Daily Report
+```bash
+pip install fastapi uvicorn requests beautifulsoup4 markdown
+```
 
-Run the wrapper script:
+Make sure `codex` is installed and logged in:
+
+```bash
+codex login
+```
+
+Optional environment variables:
+
+```bash
+export CODEX_MODEL="gpt-5-codex"
+export CHATGPT_WEB_URL="https://chatgpt.com/"
+```
+
+## Manual Usage
+
+Generate a report:
 
 ```bash
 ./run_daily_report.sh
 ```
 
-This will:
-- Fetch the latest papers.
-- Analyze them with Gemini.
-- Save a Markdown report in `reports/`.
-
-### 2. View Reports
-
-Start the web server:
+View the dashboard:
 
 ```bash
 uv run uvicorn server:app --host 0.0.0.0 --port 8000
 ```
 
-Open [http://localhost:8000](http://localhost:8000) in your browser.
+Then open `http://localhost:8000`.
+
+## Automatic Schedule
+
+Install the weekday cron job:
+
+```bash
+./install_weekday_cron.sh
+```
+
+Installed schedule:
+
+```cron
+0 10 * * 1-5 /mnt/sda/yaser/project/daily_paper/run_daily_report.sh
+```
+
+Behavior:
+
+- Runs Monday through Friday at `10:00` local time
+- Does not run on Saturday or Sunday
+- If arXiv has not updated to the local day yet, retries every hour
+- Stops retrying after success or once the local date rolls over
+- Only the stale-arXiv case retries automatically; other failures stop immediately
+
+## Logs
+
+Follow the active log:
+
+```bash
+tail -f daily_run.log
+```
+
+Log rotation behavior:
+
+- `daily_run.log` rotates automatically when it exceeds `5 MB`
+- rotated logs are stored in `logs/`
+- the newest `14` rotated logs are kept by default
+- override with `MAX_LOG_SIZE_BYTES` and `MAX_LOG_ARCHIVES`
+
+## Workflow
+
+1. Read the local daily brief first.
+2. Open the `PDF` or `ChatGPT` badge for papers worth deeper attention.
+3. Upload the PDF in ChatGPT Web and paste the provided prompt for a full read.
 
 ## Project Structure
 
-- `daily.py`: Main script for fetching and generating reports.
-- `server.py`: FastAPI server for viewing reports.
-- `reports/`: Directory containing generated Markdown reports.
-- `run_daily_report.sh`: Wrapper script for execution.
-- `static/`: Static assets (favicon).
-
+- `daily.py`: fetches arXiv papers, runs Codex screening, and writes the report
+- `run_daily_report.sh`: main runner with retry and log rotation
+- `install_weekday_cron.sh`: installs the weekday `10:00` cron job
+- `server.py`: FastAPI dashboard for browsing reports
+- `reports/`: generated Markdown reports
+- `static/`: static assets
