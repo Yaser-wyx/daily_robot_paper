@@ -8,6 +8,8 @@ LOG_DIR="$SCRIPT_DIR/logs"
 ARXIV_NOT_UPDATED_EXIT_CODE=75
 MAX_LOG_SIZE_BYTES="${MAX_LOG_SIZE_BYTES:-5242880}"
 MAX_LOG_ARCHIVES="${MAX_LOG_ARCHIVES:-14}"
+AUTO_GIT_PUBLISH="${AUTO_GIT_PUBLISH:-1}"
+AUTO_GIT_REMOTE="${AUTO_GIT_REMOTE:-origin}"
 
 cd "$SCRIPT_DIR"
 
@@ -21,6 +23,131 @@ log() {
 
 next_retry_at() {
   date -d '+1 hour' '+%Y-%m-%d %H:%M:%S'
+}
+
+github_https_to_ssh() {
+  local remote_url="$1"
+  if [[ "$remote_url" =~ ^https://github\.com/([^/]+)/([^/]+)\.git$ ]]; then
+    printf 'git@github.com:%s/%s.git' "${BASH_REMATCH[1]}" "${BASH_REMATCH[2]}"
+    return 0
+  fi
+  return 1
+}
+
+push_report_commit() {
+  local remote_name="$1"
+  local branch_name="$2"
+  local remote_url=""
+  local ssh_url=""
+
+  if git push "$remote_name" "$branch_name"; then
+    log "Auto-pushed report commit to $remote_name/$branch_name."
+    return 0
+  fi
+
+  remote_url="$(git remote get-url "$remote_name" 2>/dev/null || true)"
+  if [ -n "$remote_url" ] && ssh_url="$(github_https_to_ssh "$remote_url")"; then
+    log "Primary push via $remote_name failed. Retrying with SSH URL."
+    if git push "$ssh_url" "HEAD:$branch_name"; then
+      log "Auto-pushed report commit via SSH fallback to $branch_name."
+      return 0
+    fi
+  fi
+
+  log "Auto-push failed for branch $branch_name."
+  return 1
+}
+
+publish_report_git() {
+  local report_rel_path="reports/$RUN_DATE-RoboPulse.md"
+  local report_abs_path="$SCRIPT_DIR/$report_rel_path"
+  local branch_ref=""
+  local branch_name=""
+  local tmp_index=""
+  local head_tree=""
+  local new_tree=""
+  local parent_commit=""
+  local new_commit=""
+  local commit_message="chore(report): publish $RUN_DATE RoboPulse"
+  local publish_status=0
+  local upstream_ref=""
+  local ahead_count=0
+
+  if [ "$AUTO_GIT_PUBLISH" != "1" ]; then
+    log "AUTO_GIT_PUBLISH=$AUTO_GIT_PUBLISH. Skipping auto commit/push."
+    return 0
+  fi
+
+  if ! git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+    log "Not inside a git worktree. Skipping auto commit/push."
+    return 0
+  fi
+
+  if [ ! -f "$report_abs_path" ]; then
+    log "Expected report file $report_rel_path was not found. Skipping auto commit/push."
+    return 1
+  fi
+
+  branch_ref="$(git symbolic-ref -q HEAD || true)"
+  if [ -z "$branch_ref" ]; then
+    log "HEAD is detached. Skipping auto commit/push."
+    return 1
+  fi
+  branch_name="${branch_ref#refs/heads/}"
+
+  upstream_ref="$(git rev-parse --abbrev-ref --symbolic-full-name '@{upstream}' 2>/dev/null || true)"
+  if [ -n "$upstream_ref" ]; then
+    ahead_count="$(git rev-list --count "${upstream_ref}..HEAD")"
+    if [ "$ahead_count" -gt 0 ]; then
+      log "Branch $branch_name is already $ahead_count commit(s) ahead of $upstream_ref. Skipping auto commit/push to avoid publishing unrelated local commits."
+      return 1
+    fi
+  fi
+
+  if ! git config user.name >/dev/null 2>&1 || ! git config user.email >/dev/null 2>&1; then
+    log "Git user.name or user.email is not configured. Skipping auto commit/push."
+    return 1
+  fi
+
+  tmp_index="$(mktemp)"
+
+  if ! GIT_INDEX_FILE="$tmp_index" git read-tree HEAD >/dev/null 2>&1; then
+    log "Failed to prepare a temporary git index for report publishing."
+    publish_status=1
+  elif ! GIT_INDEX_FILE="$tmp_index" git add -- "$report_rel_path" >/dev/null 2>&1; then
+    log "Failed to stage $report_rel_path in the temporary git index."
+    publish_status=1
+  else
+    head_tree="$(git rev-parse HEAD^{tree})"
+    new_tree="$(GIT_INDEX_FILE="$tmp_index" git write-tree)"
+    if [ "$new_tree" = "$head_tree" ]; then
+      log "No report diff detected for $report_rel_path. Skipping auto commit/push."
+      publish_status=0
+    else
+      parent_commit="$(git rev-parse HEAD)"
+      new_commit="$(
+        printf '%s\n' "$commit_message" |
+          GIT_INDEX_FILE="$tmp_index" git commit-tree "$new_tree" -p "$parent_commit"
+      )"
+
+      if [ -z "$new_commit" ]; then
+        log "Failed to create a report commit for $report_rel_path."
+        publish_status=1
+      elif ! git update-ref "$branch_ref" "$new_commit" "$parent_commit"; then
+        log "Failed to move $branch_name to the new report commit."
+        publish_status=1
+      else
+        log "Created report commit $new_commit on $branch_name."
+        if ! push_report_commit "$AUTO_GIT_REMOTE" "$branch_name"; then
+          log "Report commit exists locally but could not be pushed."
+          publish_status=1
+        fi
+      fi
+    fi
+  fi
+
+  rm -f "$tmp_index"
+  return "$publish_status"
 }
 
 rotate_log_if_needed() {
@@ -100,6 +227,10 @@ while true; do
 
   if [ "$EXIT_CODE" -eq 0 ]; then
     log "Report generation succeeded."
+    if ! publish_report_git; then
+      log "Auto commit/push failed after successful report generation."
+      exit 1
+    fi
     exit 0
   fi
 
