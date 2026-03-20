@@ -143,7 +143,7 @@ Install the weekday cron job:
 Installed schedule:
 
 ```cron
-0 10 * * 1-5 /mnt/sda/yaser/project/daily_paper/run_daily_report.sh
+0 10 * * 1-5 /absolute/path/to/daily_paper/run_daily_report.sh
 ```
 
 Behavior:
