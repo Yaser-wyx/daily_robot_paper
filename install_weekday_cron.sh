@@ -4,7 +4,9 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 RUNNER="$SCRIPT_DIR/run_daily_report.sh"
-CRON_LINE="0 10 * * 1-5 $RUNNER"
+CRON_TZ="${CRON_TZ:-Asia/Shanghai}"
+CRON_PATH="${CRON_PATH:-/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin}"
+CRON_LINE="0 10 * * 1-5 TZ=$CRON_TZ PATH=$CRON_PATH HOME=$HOME $RUNNER"
 TMP_FILE="$(mktemp)"
 
 cleanup() {
@@ -27,3 +29,5 @@ crontab "$TMP_FILE"
 
 echo "Installed weekday cron entry:"
 echo "  $CRON_LINE"
+echo "Current crontab:"
+crontab -l

@@ -75,7 +75,7 @@ ARXIV_NOT_UPDATED_EXIT_CODE = 75
 GENERAL_FAILURE_EXIT_CODE = 1
 SHORTLIST_TARGET = 10
 SELECTED_TARGET = 6
-SHORTLIST_CONTEXT_LIMIT = 3800
+SHORTLIST_CONTEXT_LIMIT = 4600
 WATCHLIST_PREFIX = "W"
 SCREENING_SCHEMA = {
     "type": "object",
@@ -95,6 +95,7 @@ SELECTED_PAPER_SCHEMA = {
         "one_liner": {"type": "string"},
         "what_it_does": {"type": "string"},
         "method_and_evidence": {"type": "string"},
+        "body_core_points": {"type": "array", "items": {"type": "string"}},
         "why_it_matters": {"type": "array", "items": {"type": "string"}},
         "risks": {"type": "array", "items": {"type": "string"}},
         "how_to_read": {"type": "string"},
@@ -107,6 +108,7 @@ SELECTED_PAPER_SCHEMA = {
         "one_liner",
         "what_it_does",
         "method_and_evidence",
+        "body_core_points",
         "why_it_matters",
         "risks",
         "how_to_read",
@@ -129,10 +131,11 @@ ANALYSIS_SCHEMA = {
     "type": "object",
     "properties": {
         "opening_summary": {"type": "string"},
+        "trend_signals": {"type": "array", "items": {"type": "string"}},
         "selected_papers": {"type": "array", "items": SELECTED_PAPER_SCHEMA},
         "watchlist_papers": {"type": "array", "items": WATCHLIST_PAPER_SCHEMA},
     },
-    "required": ["opening_summary", "selected_papers", "watchlist_papers"],
+    "required": ["opening_summary", "trend_signals", "selected_papers", "watchlist_papers"],
     "additionalProperties": False,
 }
 SECTION_PATTERNS = {
@@ -248,6 +251,32 @@ def clean_json_string(text):
     if match:
         return match.group(0)
     return text
+
+
+def extract_codex_output_from_jsonl(stdout_text):
+    """Read the final agent message from a Codex `--json` event stream."""
+    last_agent_message = ""
+    for line in (stdout_text or "").splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            event = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+
+        if event.get("type") != "item.completed":
+            continue
+
+        item = event.get("item", {})
+        if item.get("type") != "agent_message":
+            continue
+
+        text = normalize_whitespace(item.get("text", ""))
+        if text:
+            last_agent_message = text
+
+    return last_agent_message
 
 
 # ================= Runtime Checks =================
@@ -412,6 +441,7 @@ def run_codex_structured(prompt, schema, task_label, max_retries=2, retry_delay=
                 "exec",
                 "--color",
                 "never",
+                "--json",
                 "--ephemeral",
                 "--output-schema",
                 schema_path,
@@ -445,6 +475,22 @@ def run_codex_structured(prompt, schema, task_label, max_retries=2, retry_delay=
                     elapsed = int(time.time() - start_time)
                     print(f"  ⏳ [Codex] Still working... {elapsed}s elapsed.", flush=True)
 
+            with open(output_path, "r", encoding="utf-8") as output_file:
+                structured_output = output_file.read().strip()
+
+            elapsed = int(time.time() - start_time)
+            jsonl_output = extract_codex_output_from_jsonl(stdout)
+            fallback_output = structured_output or jsonl_output or clean_json_string(stdout)
+
+            if fallback_output:
+                if process.returncode != 0:
+                    print(
+                        f"  ⚠️ [Codex] CLI exited with code {process.returncode}, but a structured response was recovered from stdout.",
+                        flush=True,
+                    )
+                print(f"  ✅ [Codex] Structured response received in {elapsed}s.", flush=True)
+                return fallback_output
+
             if process.returncode != 0:
                 error_lines = [line.strip() for line in (stderr or "").splitlines() if line.strip()]
                 if not error_lines:
@@ -455,14 +501,6 @@ def run_codex_structured(prompt, schema, task_label, max_retries=2, retry_delay=
                     time.sleep(retry_delay)
                     continue
                 return None
-
-            with open(output_path, "r", encoding="utf-8") as output_file:
-                structured_output = output_file.read().strip()
-
-            elapsed = int(time.time() - start_time)
-            if structured_output:
-                print(f"  ✅ [Codex] Structured response received in {elapsed}s.", flush=True)
-                return structured_output
 
             print(
                 f"  ⚠️ [Retry {attempt + 1}/{max_retries}] Codex finished after {elapsed}s but returned empty output."
@@ -809,6 +847,36 @@ def enrich_shortlist_with_html(shortlist_papers):
 
 # ================= Phase 4: Deep Analysis =================
 
+def extract_context_snippet(paper, label):
+    """Pull one labeled snippet back out of the stored HTML context."""
+    pattern = rf"{re.escape(label)}:\s*(.*?)(?:\n\n(?:Abstract|Introduction|Method|Experiments|Conclusion|Body Excerpt):|\Z)"
+    match = re.search(pattern, paper.get("html_context", ""), re.DOTALL)
+    if not match:
+        return ""
+    return normalize_whitespace(match.group(1))
+
+
+def default_trend_signals(summary):
+    """Backfill a compact trend section when the model omits it."""
+    sentences = [
+        normalize_whitespace(chunk)
+        for chunk in re.split(r"[。！？!?]+", summary or "")
+        if normalize_whitespace(chunk)
+    ]
+    if len(sentences) >= 3:
+        return sentences[:3]
+
+    defaults = list(sentences)
+    defaults.extend(
+        [
+            "优先看进入最终精选的论文之间是否形成一条清晰方法主线，而不是只盯单点结果。",
+            "如果 HTML 正文证据不够，就把结论视作趋势判断，回到 PDF 核实实验细节。",
+            "VIP 作者论文优先级更高，但是否值得跟进仍以问题强度和证据链完整度为准。",
+        ]
+    )
+    return defaults[:3]
+
+
 def build_analysis_prompt(screening_result, shortlisted_papers):
     """Construct the second-stage prompt using HTML-enriched shortlist context."""
     selected_ids = screening_result["selected_ids"]
@@ -856,10 +924,12 @@ def build_analysis_prompt(screening_result, shortlisted_papers):
 
 写作目标：
 - `opening_summary`：3-5 句中文总结，写清今天主线、为什么这些论文进了最终精选，以及 VIP 作者里哪些值得优先跟踪。
-- `selected_papers`：每篇写成适合网页阅读的高质量研究卡片。
+- `trend_signals`：恰好 3 条，每条 1 句，写成“今天最值得记住的研究信号/趋势判断”。
+- `selected_papers`：每篇写成接近深度研究简报风格的高质量研究卡片，不要写成提示词模板，也不要只重复摘要。
   - `one_liner`: 一句话判断，直接说值不值得优先看。
-  - `what_it_does`: 120-180 字，写这篇在解决什么问题、主方法方向是什么。
-  - `method_and_evidence`: 120-180 字，重点写方法脉络和目前能从 HTML 摘录看到的证据强弱。
+  - `what_it_does`: 140-220 字，写这篇在解决什么问题、核心切口是什么、相对已有路线的新意在哪里。
+  - `method_and_evidence`: 140-220 字，重点写方法脉络、正文里能读到的关键模块/实验设计/证据边界。
+  - `body_core_points`: 恰好 3 条短点，尽量来自 HTML 正文核心内容。优先写贡献点、实验设定、限制条件或作者自己强调的关键观察；不要写空泛套话。
   - `why_it_matters`: 3 条短点，每条独立完整。
   - `risks`: 2 条短点，写边界、实验可信度或复现风险。
   - `how_to_read`: 1-2 句，告诉我作为研究者最值得先看哪条主线。
@@ -936,6 +1006,9 @@ def default_section_focus(paper):
 
 def sanitize_selected_detail(raw_detail, paper):
     """Normalize and backfill a selected paper card."""
+    body_core_points = [
+        normalize_whitespace(item) for item in raw_detail.get("body_core_points", []) if normalize_whitespace(item)
+    ]
     why_it_matters = [normalize_whitespace(item) for item in raw_detail.get("why_it_matters", []) if normalize_whitespace(item)]
     risks = [normalize_whitespace(item) for item in raw_detail.get("risks", []) if normalize_whitespace(item)]
     keywords = [normalize_whitespace(item) for item in raw_detail.get("keywords", []) if normalize_whitespace(item)]
@@ -952,6 +1025,17 @@ def sanitize_selected_detail(raw_detail, paper):
         ]
     if not risks:
         risks = ["目前证据仍需依赖 PDF 细读确认。", "摘要和 HTML 摘录无法完全替代完整实验表格。"]
+    if len(body_core_points) < 3:
+        body_core_points = []
+        for label in ["Introduction", "Method", "Experiments", "Conclusion", "Abstract"]:
+            snippet = extract_context_snippet(paper, label)
+            if snippet:
+                body_core_points.append(f"{label}: {truncate_text(snippet, 140)}")
+            if len(body_core_points) == 3:
+                break
+    if len(body_core_points) < 3:
+        body_core_points.append(f"Abstract: {truncate_text(paper['abstract'], 140)}")
+    body_core_points = dedupe_preserve_order(body_core_points)[:3]
     if not keywords:
         keywords = ["robotics", "paper"]
     if len(priority_questions) < 3:
@@ -966,9 +1050,10 @@ def sanitize_selected_detail(raw_detail, paper):
     return {
         "id": paper["id"],
         "one_liner": normalize_whitespace(raw_detail.get("one_liner", "")) or "值得快速精读，但关键证据仍需要看完整 PDF。",
-        "what_it_does": normalize_whitespace(raw_detail.get("what_it_does", "")) or truncate_text(paper["abstract"], 180),
+        "what_it_does": normalize_whitespace(raw_detail.get("what_it_does", "")) or truncate_text(paper["abstract"], 220),
         "method_and_evidence": normalize_whitespace(raw_detail.get("method_and_evidence", ""))
         or "目前主要依据 arXiv HTML 摘录与摘要推断方法脉络，具体实验数字仍需回到 PDF 核实。",
+        "body_core_points": body_core_points,
         "why_it_matters": why_it_matters[:3],
         "risks": risks[:2],
         "how_to_read": normalize_whitespace(raw_detail.get("how_to_read", ""))
@@ -993,6 +1078,7 @@ def analyze_shortlist(screening_result, shortlisted_papers):
         print("⚠️ [Editor] Shortlist is empty. Publishing a summary-only issue.")
         return {
             "opening_summary": screening_result["opening_summary"],
+            "trend_signals": default_trend_signals(screening_result["opening_summary"]),
             "selected_papers": [],
             "watchlist_papers": [],
         }
@@ -1052,6 +1138,10 @@ def analyze_shortlist(screening_result, shortlisted_papers):
     )
     return {
         "opening_summary": normalize_whitespace(data.get("opening_summary", "")) or screening_result["opening_summary"],
+        "trend_signals": [
+            normalize_whitespace(item) for item in data.get("trend_signals", []) if normalize_whitespace(item)
+        ][:3]
+        or default_trend_signals(screening_result["opening_summary"]),
         "selected_papers": selected_papers,
         "watchlist_papers": watchlist_papers,
     }
@@ -1115,6 +1205,14 @@ def resource_tokens(paper, include_chatgpt):
     return " ".join(tokens)
 
 
+def content_source_summary(paper):
+    """Describe how much paper body context was available."""
+    sections = paper.get("available_sections", [])
+    if sections:
+        return f"{paper['content_source_label']} ({', '.join(sections)})"
+    return paper["content_source_label"]
+
+
 def build_report_markdown(issue_title, total_papers, screening_result, enriched_papers, analysis_result):
     """Assemble the markdown report body."""
     enriched_map = {paper["id"]: paper for paper in enriched_papers}
@@ -1126,9 +1224,14 @@ def build_report_markdown(issue_title, total_papers, screening_result, enriched_
         "",
         analysis_result["opening_summary"] or screening_result["opening_summary"] or "今天的精选基于摘要初筛和 shortlist HTML 精读生成。",
         "",
-        "## Editor's Picks",
+        "## 今日信号",
         "",
     ]
+
+    for signal in analysis_result.get("trend_signals", [])[:3]:
+        lines.append(f"- {signal}")
+
+    lines.extend(["", "## Editor's Picks", ""])
 
     if not analysis_result["selected_papers"]:
         lines.append("*(今日没有进入最终精选的论文，但可查看 Watchlist 作为备选。)*")
@@ -1142,30 +1245,29 @@ def build_report_markdown(issue_title, total_papers, screening_result, enriched_
                 f"* **Paper ID**: `{paper['id']}`",
                 f"* **Authors**: {paper['authors']}",
                 f"* **Author Priority**: {paper_priority_label(paper)}",
-                f"* **一句话判断**: {detail['one_liner']}",
-                f"* **这篇在做什么**: {detail['what_it_does']}",
-                f"* **方法与证据**: {detail['method_and_evidence']}",
-                "* **为什么值得看**:",
+                f"* **一句话结论**: {detail['one_liner']}",
+                f"* **问题与切口**: {detail['what_it_does']}",
+                f"* **核心方法与证据**: {detail['method_and_evidence']}",
+                "* **正文要点**:",
             ]
         )
+        lines.extend(f"  - {point}" for point in detail["body_core_points"])
+        lines.extend(["* **为什么值得跟**:"])
         lines.extend(f"  - {point}" for point in detail["why_it_matters"])
         lines.extend(["* **风险 / 保留意见**:"])
         lines.extend(f"  - {point}" for point in detail["risks"])
         lines.extend(
             [
-                f"* **适合你怎么看**: {detail['how_to_read']}",
+                f"* **建议先看**: {detail['how_to_read']}",
                 "* **关键词**: " + " ".join(f"`{keyword}`" for keyword in detail["keywords"]),
-                f"* **证据来源**: {paper['content_source_label']}",
-                "",
-                "#### ChatGPT Deep Read Prompt",
-                "> 上传 PDF 后再粘贴。这个 prompt 已按该论文的方法线索、实验焦点和风险点单独定制。",
-                "",
-                "```text",
-                build_chatgpt_prompt(paper, detail),
-                "```",
-                "",
+                f"* **证据来源**: {content_source_summary(paper)}",
+                "* **读 PDF 先核查**:",
             ]
         )
+        lines.extend(f"  - {question}" for question in detail["priority_questions"])
+        lines.extend(["* **上传 PDF 后优先看**:"])
+        lines.extend(f"  - {section}" for section in detail["section_focus"])
+        lines.append("")
 
     lines.extend(["## Watchlist", ""])
     if not analysis_result["watchlist_papers"]:
@@ -1181,7 +1283,7 @@ def build_report_markdown(issue_title, total_papers, screening_result, enriched_
                     f"* **Authors**: {paper['authors']}",
                     f"* **Author Priority**: {paper_priority_label(paper)}",
                     f"* **为什么还值得留意**: {detail['note']}",
-                    f"* **证据来源**: {paper['content_source_label']}",
+                    f"* **证据来源**: {content_source_summary(paper)}",
                     "",
                 ]
             )

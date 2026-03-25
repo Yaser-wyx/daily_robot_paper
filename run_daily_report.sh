@@ -5,6 +5,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 LOG_FILE="$SCRIPT_DIR/daily_run.log"
 LOG_DIR="$SCRIPT_DIR/logs"
+LOCK_FILE="${TMPDIR:-/tmp}/daily_paper-$(basename "$SCRIPT_DIR").lock"
 ARXIV_NOT_UPDATED_EXIT_CODE=75
 MAX_LOG_SIZE_BYTES="${MAX_LOG_SIZE_BYTES:-5242880}"
 MAX_LOG_ARCHIVES="${MAX_LOG_ARCHIVES:-14}"
@@ -19,6 +20,30 @@ timestamp() {
 
 log() {
   printf '[%s] %s\n' "$(timestamp)" "$*"
+}
+
+acquire_lock() {
+  if ! command -v flock >/dev/null 2>&1; then
+    log "flock is unavailable. Continuing without a run lock."
+    return 0
+  fi
+
+  exec 9>"$LOCK_FILE"
+  if ! flock -n 9; then
+    log "Another report run is already active. Exiting duplicate invocation."
+    exit 1
+  fi
+}
+
+log_exit_status() {
+  local exit_code=$?
+  if [ "$exit_code" -eq 0 ]; then
+    log "Run finished successfully."
+  elif [ "$exit_code" -eq "$ARXIV_NOT_UPDATED_EXIT_CODE" ]; then
+    log "Run finished with arXiv-not-updated status ($exit_code)."
+  else
+    log "Run failed with exit code $exit_code."
+  fi
 }
 
 next_retry_at() {
@@ -182,6 +207,18 @@ ROTATED_LOG="$(rotate_log_if_needed)"
 # Mirror logs to both terminal and file so manual runs and cron runs are both debuggable.
 exec > >(tee -a "$LOG_FILE") 2>&1
 
+trap log_exit_status EXIT
+acquire_lock
+
+if [ -t 0 ] || [ -t 1 ]; then
+  RUN_CONTEXT="interactive"
+else
+  RUN_CONTEXT="non-interactive"
+fi
+
+log "Run context: $RUN_CONTEXT"
+log "Working directory: $SCRIPT_DIR"
+
 # Keep the script portable across machines while still supporting nvm installs.
 if ! command -v codex >/dev/null 2>&1; then
   for codex_candidate in "$HOME"/.nvm/versions/node/*/bin/codex; do
@@ -215,6 +252,8 @@ if [ -n "$ROTATED_LOG" ]; then
   log "Rotated daily_run.log to $ROTATED_LOG because it exceeded ${MAX_LOG_SIZE_BYTES} bytes."
 fi
 
+log "Using python interpreter: $PYTHON_BIN"
+log "AUTO_GIT_PUBLISH=$AUTO_GIT_PUBLISH AUTO_GIT_REMOTE=$AUTO_GIT_REMOTE"
 log "Starting scheduled report run for $RUN_DATE."
 
 while true; do
