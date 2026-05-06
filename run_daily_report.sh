@@ -59,13 +59,52 @@ github_https_to_ssh() {
   return 1
 }
 
+remote_tracking_ref() {
+  local remote_name="$1"
+  local branch_name="$2"
+
+  printf 'refs/remotes/%s/%s' "$remote_name" "$branch_name"
+}
+
+update_remote_tracking_ref() {
+  local remote_name="$1"
+  local branch_name="$2"
+  local commit_sha="$3"
+  local tracking_ref=""
+
+  tracking_ref="$(remote_tracking_ref "$remote_name" "$branch_name")"
+  if git update-ref "$tracking_ref" "$commit_sha"; then
+    log "Updated local tracking ref $tracking_ref to $commit_sha."
+    return 0
+  fi
+
+  log "Failed to update local tracking ref $tracking_ref."
+  return 1
+}
+
+remote_branch_head() {
+  local remote_name="$1"
+  local branch_name="$2"
+  local remote_line=""
+
+  remote_line="$(git ls-remote "$remote_name" "refs/heads/$branch_name" 2>/dev/null || true)"
+  if [ -z "$remote_line" ]; then
+    return 1
+  fi
+
+  printf '%s' "${remote_line%%[[:space:]]*}"
+}
+
 push_report_commit() {
   local remote_name="$1"
   local branch_name="$2"
   local remote_url=""
   local ssh_url=""
+  local pushed_commit=""
 
   if git push "$remote_name" "$branch_name"; then
+    pushed_commit="$(git rev-parse HEAD)"
+    update_remote_tracking_ref "$remote_name" "$branch_name" "$pushed_commit" || true
     log "Auto-pushed report commit to $remote_name/$branch_name."
     return 0
   fi
@@ -74,6 +113,8 @@ push_report_commit() {
   if [ -n "$remote_url" ] && ssh_url="$(github_https_to_ssh "$remote_url")"; then
     log "Primary push via $remote_name failed. Retrying with SSH URL."
     if git push "$ssh_url" "HEAD:$branch_name"; then
+      pushed_commit="$(git rev-parse HEAD)"
+      update_remote_tracking_ref "$remote_name" "$branch_name" "$pushed_commit" || true
       log "Auto-pushed report commit via SSH fallback to $branch_name."
       return 0
     fi
@@ -97,6 +138,8 @@ publish_report_git() {
   local publish_status=0
   local upstream_ref=""
   local ahead_count=0
+  local local_head=""
+  local remote_head=""
 
   if [ "$AUTO_GIT_PUBLISH" != "1" ]; then
     log "AUTO_GIT_PUBLISH=$AUTO_GIT_PUBLISH. Skipping auto commit/push."
@@ -124,8 +167,15 @@ publish_report_git() {
   if [ -n "$upstream_ref" ]; then
     ahead_count="$(git rev-list --count "${upstream_ref}..HEAD")"
     if [ "$ahead_count" -gt 0 ]; then
-      log "Branch $branch_name is already $ahead_count commit(s) ahead of $upstream_ref. Skipping auto commit/push to avoid publishing unrelated local commits."
-      return 1
+      local_head="$(git rev-parse HEAD)"
+      remote_head="$(remote_branch_head "$AUTO_GIT_REMOTE" "$branch_name" || true)"
+      if [ -n "$remote_head" ] && [ "$remote_head" = "$local_head" ]; then
+        log "Branch $branch_name appears ahead because $upstream_ref is stale. Refreshing the local tracking ref."
+        update_remote_tracking_ref "$AUTO_GIT_REMOTE" "$branch_name" "$local_head" || return 1
+      else
+        log "Branch $branch_name is already $ahead_count commit(s) ahead of $upstream_ref. Skipping auto commit/push to avoid publishing unrelated local commits."
+        return 1
+      fi
     fi
   fi
 
@@ -163,7 +213,10 @@ publish_report_git() {
         publish_status=1
       else
         log "Created report commit $new_commit on $branch_name."
-        if ! push_report_commit "$AUTO_GIT_REMOTE" "$branch_name"; then
+        if ! git update-index --add -- "$report_rel_path"; then
+          log "Failed to sync $report_rel_path into the main git index after commit creation."
+          publish_status=1
+        elif ! push_report_commit "$AUTO_GIT_REMOTE" "$branch_name"; then
           log "Report commit exists locally but could not be pushed."
           publish_status=1
         fi
