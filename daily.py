@@ -13,6 +13,8 @@ from datetime import datetime
 import requests
 from bs4 import BeautifulSoup
 
+from paper_parser import collect_rediscovery_candidates
+
 # ================= Configuration =================
 
 ARXIV_URL = "https://arxiv.org/list/cs.RO/new"
@@ -125,6 +127,27 @@ WATCHLIST_PAPER_SCHEMA = {
         "note": {"type": "string"},
     },
     "required": ["id", "note"],
+    "additionalProperties": False,
+}
+REDISCOVERY_PAPER_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "id": {"type": "string"},
+        "why_revisit": {"type": "string"},
+        "missed_signal": {"type": "string"},
+        "current_relevance": {"type": "string"},
+        "suggested_action": {"type": "string"},
+        "keywords": {"type": "array", "items": {"type": "string"}},
+    },
+    "required": ["id", "why_revisit", "missed_signal", "current_relevance", "suggested_action", "keywords"],
+    "additionalProperties": False,
+}
+REDISCOVERY_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "rediscovered_papers": {"type": "array", "items": REDISCOVERY_PAPER_SCHEMA},
+    },
+    "required": ["rediscovered_papers"],
     "additionalProperties": False,
 }
 ANALYSIS_SCHEMA = {
@@ -1187,7 +1210,116 @@ def build_chatgpt_prompt(paper, detail):
 - 如果某个信息在 PDF 中不明确，请直接写“不确定”。
 - 不要只重复摘要，要优先验证方法细节、实验可信度和边界条件。
 - 结尾补一个“下一步阅读建议”，告诉我最该看论文里的哪几个章节、图表或实验。
+	"""
+
+
+# ================= Phase 6: Historical Rediscovery =================
+
+def build_rediscovery_prompt(candidates, max_candidates=40):
+    """Construct the Codex prompt for rediscovering historical Watchlist papers."""
+    candidate_blocks = []
+    for record in candidates[:max_candidates]:
+        candidate_blocks.append(
+            "\n".join(
+                [
+                    f"ID: {record.paper_id}",
+                    f"Title: {record.title}",
+                    f"Source Date: {record.date}",
+                    f"Authors: {record.authors or 'Unknown'}",
+                    f"HTML URL: {record.html_url or '(unavailable)'}",
+                    f"PDF URL: {record.pdf_url or '(unavailable)'}",
+                    f"Historical Watchlist Note: {truncate_text(record.summary, 520) or '(no note captured)'}",
+                    f"Historical Keywords: {', '.join(record.keywords) if record.keywords else '(none)'}",
+                ]
+            )
+        )
+
+    today_str = datetime.now().strftime("%Y-%m-%d %A")
+    return f"""
+你是机器人学方向的资深研究编辑。现在请从历史 Watchlist 中重新发现 3-5 篇可能被低估、但仍值得我今天再看的论文。
+
+今天是 {today_str}。
+我的研究兴趣是：{INTERESTS}。
+
+硬性约束：
+1. 只能从候选列表中选择论文，`id` 必须严格使用候选列表里的 ID。
+2. 不要选择只是泛泛相关的论文；优先选择与 VLA、Sim2Real、RL+VLA、World Model、World Action Model、长时程操作、真实部署评测强相关的论文。
+3. 只能基于候选里提供的历史信息判断，不要捏造论文全文细节、实验数字、图表或公式。
+4. 如果候选整体质量不够，可以少于 3 篇，但不要超过 5 篇。
+
+输出要求：
+- 只返回一个合法 JSON 对象，不要使用代码块。
+- `missed_signal` 写当时可能被低估的具体信号。
+- `current_relevance` 写为什么现在值得再看，以及它和我的研究兴趣的关系。
+- `suggested_action` 只能写一个短动作，例如：`加入精读`、`快速浏览`、`继续跟踪`。
+
+候选论文如下：
+
+{os.linesep.join(candidate_blocks)}
 """
+
+
+def sanitize_rediscovery_detail(raw_detail, record):
+    """Normalize one rediscovered paper record returned by Codex."""
+    keywords = [normalize_whitespace(item) for item in raw_detail.get("keywords", []) if normalize_whitespace(item)]
+    if not keywords:
+        keywords = record.keywords or ["robotics"]
+    return {
+        "id": record.paper_id,
+        "title": record.title,
+        "source_date": record.date,
+        "html_url": record.html_url,
+        "pdf_url": record.pdf_url,
+        "why_revisit": normalize_whitespace(raw_detail.get("why_revisit", ""))
+        or "这篇历史 Watchlist 论文与当前研究兴趣仍然相关，值得重新快速判断。",
+        "missed_signal": normalize_whitespace(raw_detail.get("missed_signal", ""))
+        or "当时只进入 Watchlist，可能没有被充分精读。",
+        "current_relevance": normalize_whitespace(raw_detail.get("current_relevance", ""))
+        or "需要结合当前 VLA、Sim2Real 或 World Model 主线重新评估。",
+        "suggested_action": normalize_whitespace(raw_detail.get("suggested_action", "")) or "快速浏览",
+        "keywords": keywords[:5],
+    }
+
+
+def historical_rediscovery(current_date=None):
+    """Use Codex to pick historical Watchlist papers worth revisiting."""
+    current_date = current_date or datetime.now().strftime("%Y-%m-%d")
+    candidates = collect_rediscovery_candidates(OUTPUT_DIR, current_date=current_date)
+    if not candidates:
+        print("ℹ️ [Rediscovery] No historical Watchlist candidates available.")
+        return []
+
+    print(f"\n🔁 [Rediscovery] Reviewing {len(candidates)} historical Watchlist candidates...")
+    response = run_codex_structured(
+        build_rediscovery_prompt(candidates),
+        REDISCOVERY_SCHEMA,
+        "Rediscovering overlooked historical Watchlist papers",
+    )
+    if not response:
+        print("⚠️ [Rediscovery] Codex rediscovery failed. Continuing without the section.")
+        return []
+
+    try:
+        data = json.loads(clean_json_string(response))
+    except json.JSONDecodeError as exc:
+        print(f"⚠️ [Rediscovery] JSON parsing failed: {exc}. Continuing without the section.")
+        return []
+
+    candidate_map = {record.paper_id: record for record in candidates}
+    rediscovered = []
+    for raw_detail in data.get("rediscovered_papers", []):
+        paper_id = normalize_paper_id(str(raw_detail.get("id", "")))
+        record = candidate_map.get(paper_id)
+        if not record:
+            continue
+        if any(item["id"] == paper_id for item in rediscovered):
+            continue
+        rediscovered.append(sanitize_rediscovery_detail(raw_detail, record))
+        if len(rediscovered) == 5:
+            break
+
+    print(f"✅ [Rediscovery] Selected {len(rediscovered)} historical papers for rediscovery.")
+    return rediscovered
 
 
 # ================= Phase 6: Publisher =================
@@ -1205,6 +1337,16 @@ def resource_tokens(paper, include_chatgpt):
     return " ".join(tokens)
 
 
+def rediscovery_resource_tokens(detail):
+    """Render resource badges for a rediscovered historical paper."""
+    tokens = []
+    if detail.get("html_url"):
+        tokens.append(f"[[HTML]]({detail['html_url']})")
+    if detail.get("pdf_url"):
+        tokens.append(f"[[PDF]]({detail['pdf_url']})")
+    return " ".join(tokens)
+
+
 def content_source_summary(paper):
     """Describe how much paper body context was available."""
     sections = paper.get("available_sections", [])
@@ -1213,8 +1355,9 @@ def content_source_summary(paper):
     return paper["content_source_label"]
 
 
-def build_report_markdown(issue_title, total_papers, screening_result, enriched_papers, analysis_result):
+def build_report_markdown(issue_title, total_papers, screening_result, enriched_papers, analysis_result, rediscovery_result=None):
     """Assemble the markdown report body."""
+    rediscovery_result = rediscovery_result or []
     enriched_map = {paper["id"]: paper for paper in enriched_papers}
     lines = [
         f"# {issue_title}",
@@ -1230,6 +1373,23 @@ def build_report_markdown(issue_title, total_papers, screening_result, enriched_
 
     for signal in analysis_result.get("trend_signals", [])[:3]:
         lines.append(f"- {signal}")
+
+    if rediscovery_result:
+        lines.extend(["", "## Historical Rediscovery", ""])
+        for detail in rediscovery_result:
+            resource_suffix = rediscovery_resource_tokens(detail)
+            paper_line = f"- **Paper**: {detail['title']} {resource_suffix}".rstrip()
+            lines.extend(
+                [
+                    paper_line,
+                    f"  - **Paper ID**: `{detail['id']}`",
+                    f"  - **来源日期**: {detail['source_date']}",
+                    f"  - **当时可能被低估的信号**: {detail['missed_signal']}",
+                    f"  - **为什么现在值得再看**: {detail['current_relevance']}",
+                    f"  - **建议动作**: {detail['suggested_action']}",
+                    "  - **关键词**: " + " ".join(f"`{keyword}`" for keyword in detail["keywords"]),
+                ]
+            )
 
     lines.extend(["", "## Editor's Picks", ""])
 
@@ -1291,7 +1451,7 @@ def build_report_markdown(issue_title, total_papers, screening_result, enriched_
     return "\n".join(lines).rstrip() + "\n"
 
 
-def publish_report(issue_title, total_papers, screening_result, enriched_papers, analysis_result):
+def publish_report(issue_title, total_papers, screening_result, enriched_papers, analysis_result, rediscovery_result=None):
     """Assemble the markdown report and persist it to disk."""
     print("\n🖨️ [Publisher] Assembling final report...")
 
@@ -1299,7 +1459,14 @@ def publish_report(issue_title, total_papers, screening_result, enriched_papers,
     if not os.path.exists(OUTPUT_DIR):
         os.makedirs(OUTPUT_DIR)
 
-    final_content = build_report_markdown(issue_title, total_papers, screening_result, enriched_papers, analysis_result)
+    final_content = build_report_markdown(
+        issue_title,
+        total_papers,
+        screening_result,
+        enriched_papers,
+        analysis_result,
+        rediscovery_result=rediscovery_result,
+    )
     filename = os.path.join(OUTPUT_DIR, f"{date_str}-RoboPulse.md")
     with open(filename, "w", encoding="utf-8") as report_file:
         report_file.write(final_content)
@@ -1337,12 +1504,15 @@ def main():
     if not analysis_result:
         return GENERAL_FAILURE_EXIT_CODE
 
+    rediscovery_result = historical_rediscovery()
+
     publish_report(
         screening_result["title"],
         len(papers),
         screening_result,
         enriched_papers,
         analysis_result,
+        rediscovery_result=rediscovery_result,
     )
     return 0
 

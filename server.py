@@ -1,9 +1,10 @@
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 
+from paper_parser import build_search_index
 from site_renderer import REPORTS_DIR, load_reports, render_archive_page, render_detail_page
 
 app = FastAPI()
@@ -28,6 +29,11 @@ async def list_reports():
 @app.get("/index.html", response_class=HTMLResponse)
 async def list_reports_index():
     return RedirectResponse(url="/", status_code=308)
+
+
+@app.get("/search-index.json")
+async def search_index():
+    return JSONResponse(content=build_search_index(REPORTS_DIR))
 
 
 @app.get("/reports/{report_id}", response_class=HTMLResponse)

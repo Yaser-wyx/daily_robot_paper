@@ -285,6 +285,7 @@ def render_archive_page(reports, page_depth=0):
 
     latest_cta = f'<a href="{escape(report_href(latest.report_id))}" class="hero-button">Open Latest Report</a>' if latest else ""
     favicon_href = asset_href(page_depth, "static/favicon.svg")
+    search_index_href = asset_href(page_depth, "search-index.json")
 
     return f"""
     <!DOCTYPE html>
@@ -404,6 +405,97 @@ def render_archive_page(reports, page_depth=0):
                 font-weight: 700;
                 box-shadow: 0 14px 30px rgba(11, 110, 105, 0.22);
             }}
+            .search-panel {{
+                margin-bottom: 28px;
+                padding: 24px;
+                border: 1px solid var(--line);
+                border-radius: 24px;
+                background: var(--panel);
+                box-shadow: var(--shadow);
+            }}
+            .search-row {{
+                display: grid;
+                grid-template-columns: minmax(0, 1fr) auto;
+                gap: 12px;
+                align-items: center;
+            }}
+            .search-input {{
+                width: 100%;
+                min-height: 48px;
+                padding: 12px 14px;
+                border: 1px solid rgba(99, 78, 45, 0.18);
+                border-radius: 16px;
+                background: rgba(255, 253, 248, 0.95);
+                color: var(--ink);
+                font: inherit;
+                outline: none;
+            }}
+            .search-input:focus {{
+                border-color: rgba(11, 110, 105, 0.5);
+                box-shadow: 0 0 0 4px rgba(11, 110, 105, 0.08);
+            }}
+            .search-count {{
+                min-width: 112px;
+                color: var(--muted);
+                font-size: 0.9rem;
+                text-align: right;
+            }}
+            .search-results {{
+                display: grid;
+                gap: 12px;
+                margin-top: 16px;
+            }}
+            .search-result {{
+                padding: 16px;
+                border: 1px solid rgba(99, 78, 45, 0.12);
+                border-radius: 18px;
+                background: rgba(255, 253, 248, 0.82);
+            }}
+            .search-result h3 {{
+                margin: 0 0 8px;
+                font-size: 1rem;
+                line-height: 1.25;
+                letter-spacing: 0;
+            }}
+            .search-result h3 a {{
+                color: var(--ink);
+                text-decoration: none;
+            }}
+            .search-result h3 a:hover {{
+                color: var(--accent);
+            }}
+            .search-result p {{
+                margin: 0 0 10px;
+                color: var(--muted);
+                line-height: 1.55;
+                font-size: 0.92rem;
+            }}
+            .search-result-meta,
+            .search-result-links {{
+                display: flex;
+                flex-wrap: wrap;
+                gap: 8px;
+                align-items: center;
+            }}
+            .search-result-meta {{
+                margin-bottom: 8px;
+            }}
+            .result-chip,
+            .result-link {{
+                display: inline-flex;
+                align-items: center;
+                padding: 5px 9px;
+                border-radius: 999px;
+                background: rgba(99, 78, 45, 0.08);
+                color: var(--muted);
+                font-size: 0.78rem;
+                font-weight: 700;
+                text-decoration: none;
+            }}
+            .result-link {{
+                background: rgba(11, 110, 105, 0.08);
+                color: var(--accent);
+            }}
             .section-head {{
                 display: flex;
                 align-items: center;
@@ -511,6 +603,12 @@ def render_archive_page(reports, page_depth=0):
                     flex-direction: column;
                     align-items: flex-start;
                 }}
+                .search-row {{
+                    grid-template-columns: 1fr;
+                }}
+                .search-count {{
+                    text-align: left;
+                }}
             }}
         </style>
     </head>
@@ -540,6 +638,20 @@ def render_archive_page(reports, page_depth=0):
                 </div>
             </section>
 
+            <section class="search-panel" aria-labelledby="paper-search-heading">
+                <div class="section-head">
+                    <div>
+                        <h2 id="paper-search-heading">Paper Search</h2>
+                        <p>Search historical paper titles, IDs, keywords, notes, and report text.</p>
+                    </div>
+                </div>
+                <div class="search-row">
+                    <input id="paper-search-input" class="search-input" type="search" placeholder="Search VLA, world model, Sim2Real, or an arXiv ID" autocomplete="off">
+                    <div id="paper-search-count" class="search-count">Loading index...</div>
+                </div>
+                <div id="paper-search-results" class="search-results" aria-live="polite"></div>
+            </section>
+
             <section>
                 <div class="section-head">
                     <div>
@@ -552,6 +664,107 @@ def render_archive_page(reports, page_depth=0):
                 </div>
             </section>
         </main>
+        <script>
+            const searchIndexUrl = "{escape(search_index_href)}";
+            const searchInput = document.getElementById("paper-search-input");
+            const searchCount = document.getElementById("paper-search-count");
+            const searchResults = document.getElementById("paper-search-results");
+            let paperIndex = [];
+
+            function normalizeQuery(value) {{
+                return (value || "").toLowerCase().trim().split(/\\s+/).filter(Boolean);
+            }}
+
+            function escapeHtml(value) {{
+                return String(value || "").replace(/[&<>"']/g, (char) => ({{
+                    "&": "&amp;",
+                    "<": "&lt;",
+                    ">": "&gt;",
+                    "\\"": "&quot;",
+                    "'": "&#39;"
+                }}[char]));
+            }}
+
+            function itemScore(item, terms) {{
+                const title = (item.title || "").toLowerCase();
+                const paperId = (item.paper_id || "").toLowerCase();
+                const keywords = (item.keywords || []).join(" ").toLowerCase();
+                const summary = (item.summary || "").toLowerCase();
+                const searchText = item.search_text || "";
+                let score = 0;
+                for (const term of terms) {{
+                    if (!searchText.includes(term)) {{
+                        return -1;
+                    }}
+                    if (paperId.includes(term)) score += 60;
+                    if (title.includes(term)) score += 35;
+                    if (keywords.includes(term)) score += 18;
+                    if (summary.includes(term)) score += 10;
+                }}
+                const dateValue = Date.parse(item.date || "") || 0;
+                return score + dateValue / 1000000000000;
+            }}
+
+            function renderResults() {{
+                const terms = normalizeQuery(searchInput.value);
+                if (!terms.length) {{
+                    searchResults.innerHTML = "";
+                    searchCount.textContent = `${{paperIndex.length}} papers indexed`;
+                    return;
+                }}
+
+                const matches = paperIndex
+                    .map((item) => ({{ item, score: itemScore(item, terms) }}))
+                    .filter((entry) => entry.score >= 0)
+                    .sort((left, right) => right.score - left.score)
+                    .slice(0, 20);
+
+                searchCount.textContent = `${{matches.length}} shown`;
+                if (!matches.length) {{
+                    searchResults.innerHTML = '<div class="empty-state">No matching papers found.</div>';
+                    return;
+                }}
+
+                searchResults.innerHTML = matches.map(({{ item }}) => {{
+                    const links = [
+                        item.html_url ? `<a class="result-link" href="${{escapeHtml(item.html_url)}}" target="_blank" rel="noopener noreferrer">HTML</a>` : "",
+                        item.pdf_url ? `<a class="result-link" href="${{escapeHtml(item.pdf_url)}}" target="_blank" rel="noopener noreferrer">PDF</a>` : "",
+                        `<a class="result-link" href="${{escapeHtml(item.report_url)}}">Report</a>`
+                    ].filter(Boolean).join("");
+                    const summary = item.summary ? `<p>${{escapeHtml(item.summary)}}</p>` : "";
+                    const paperId = item.paper_id ? `<span class="result-chip">${{escapeHtml(item.paper_id)}}</span>` : "";
+                    return `
+                        <article class="search-result">
+                            <div class="search-result-meta">
+                                <span class="result-chip">${{escapeHtml(item.date)}}</span>
+                                <span class="result-chip">${{escapeHtml(item.section)}}</span>
+                                ${{paperId}}
+                            </div>
+                            <h3><a href="${{escapeHtml(item.report_url)}}">${{escapeHtml(item.title)}}</a></h3>
+                            ${{summary}}
+                            <div class="search-result-links">${{links}}</div>
+                        </article>
+                    `;
+                }}).join("");
+            }}
+
+            fetch(searchIndexUrl)
+                .then((response) => {{
+                    if (!response.ok) throw new Error(`HTTP ${{response.status}}`);
+                    return response.json();
+                }})
+                .then((items) => {{
+                    paperIndex = Array.isArray(items) ? items : [];
+                    searchCount.textContent = `${{paperIndex.length}} papers indexed`;
+                    searchInput.disabled = false;
+                }})
+                .catch(() => {{
+                    searchCount.textContent = "Search unavailable";
+                    searchInput.disabled = true;
+                }});
+
+            searchInput.addEventListener("input", renderResults);
+        </script>
     </body>
     </html>
     """

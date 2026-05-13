@@ -1,6 +1,8 @@
 import shutil
+import json
 from pathlib import Path
 
+from paper_parser import build_search_index
 from site_renderer import REPORTS_DIR, STATIC_DIR, load_reports, render_archive_page, render_detail_page
 
 OUTPUT_DIR = Path("dist")
@@ -34,6 +36,13 @@ def build_site(report_dir=REPORTS_DIR, output_dir=OUTPUT_DIR):
     write_text(output_dir / ".nojekyll", "")
     print(f"[build] Rendering archive page for {len(reports)} reports")
     write_text(output_dir / "index.html", render_archive_page(reports, page_depth=0))
+
+    print("[build] Building search index")
+    search_index = build_search_index(report_dir)
+    write_text(
+        output_dir / "search-index.json",
+        json.dumps(search_index, ensure_ascii=False, indent=2),
+    )
 
     for report in reports:
         detail_path = output_dir / "reports" / report.report_id / "index.html"
