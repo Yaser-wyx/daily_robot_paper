@@ -6,6 +6,7 @@ from datetime import datetime
 from robopulse.codex_client import run_codex_structured
 from robopulse.config import (
     CHATGPT_WEB_URL,
+    CODEX_MODEL,
     CORE_VIP_AUTHORS,
     EXTENDED_VIP_AUTHORS,
     INTERESTS,
