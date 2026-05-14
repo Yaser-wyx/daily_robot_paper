@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RoboPulse Research Briefs</title>
+    <link rel="icon" href="$favicon_href" type="image/svg+xml">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500&family=Source+Serif+4:opsz,wght@8..60,400;8..60,600&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="$archive_css_href">
+</head>
+<body>
+    <main class="shell">
+        <section class="hero">
+            <span class="hero-kicker">RoboPulse Research Desk</span>
+            <div class="hero-grid">
+                <div>
+                    <h1>Daily Robotics Briefing, designed for fast paper triage.</h1>
+                    <p>
+                        Browse each daily report as a research dashboard: richer summaries, sharper filters,
+                        and a direct handoff into ChatGPT when a paper is worth a deeper read.
+                    </p>
+                    $latest_cta
+                </div>
+                <div class="hero-stats">
+                    <div class="stat-card">
+                        <span class="stat-label">Reports</span>
+                        <span class="stat-value">$report_count</span>
+                    </div>
+                    <div class="stat-card">
+                        <span class="stat-label">Latest Issue</span>
+                        <span class="stat-value">$latest_title</span>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <section class="search-panel" aria-labelledby="paper-search-heading" data-search-index-url="$search_index_href">
+            <div class="section-head">
+                <div>
+                    <h2 id="paper-search-heading">Paper Search</h2>
+                    <p>Search historical paper titles, IDs, keywords, notes, and report text.</p>
+                </div>
+            </div>
+            <div class="search-row">
+                <input id="paper-search-input" class="search-input" type="search" placeholder="Search VLA, world model, Sim2Real, or an arXiv ID" autocomplete="off">
+                <div id="paper-search-count" class="search-count">Loading index...</div>
+            </div>
+            <div id="paper-search-results" class="search-results" aria-live="polite"></div>
+        </section>
+
+        <section>
+            <div class="section-head">
+                <div>
+                    <h2>Issue Archive</h2>
+                    <p>Open the latest brief or scan older issues by date and preview.</p>
+                </div>
+            </div>
+            <div class="report-grid">
+                $cards
+            </div>
+        </section>
+    </main>
+    <script src="$archive_js_href"></script>
+</body>
+</html>

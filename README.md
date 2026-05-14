@@ -172,12 +172,11 @@ Log behavior:
 
 ## Project Structure
 
-- `daily.py`: fetches arXiv papers, runs Codex screening, fetches arXiv HTML for shortlisted papers, and writes the report
+- `daily.py`: compatibility entrypoint for the daily report generator
+- `src/robopulse/`: source package for arXiv fetching, Codex screening, HTML reading, report publishing, search parsing, and site rendering
 - `run_daily_report.sh`: main runner with retry logic, log rotation, and optional auto commit/push
 - `install_weekday_cron.sh`: installs the weekday `10:00` cron job
-- `site_renderer.py`: shared HTML renderer for both FastAPI preview and static site builds
-- `server.py`: thin FastAPI preview app that serves the shared renderer
-- `build_site.py`: builds the GitHub Pages static output into `dist/`
+- `site_renderer.py`, `paper_parser.py`, `server.py`, `build_site.py`: compatibility entrypoints/re-exports for existing local and deploy commands
 - `.github/workflows/deploy-pages.yml`: GitHub Pages deployment workflow
 - `reports/`: generated Markdown reports
-- `static/`: static assets used by the rendered site
+- `static/`: favicon plus extracted CSS/JS assets used by the rendered site

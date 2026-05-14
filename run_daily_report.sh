@@ -287,7 +287,11 @@ if ! command -v codex >/dev/null 2>&1; then
   exit 1
 fi
 
-if [ -x "$SCRIPT_DIR/.venv/bin/python" ]; then
+USE_UV_RUN=0
+if command -v uv >/dev/null 2>&1; then
+  USE_UV_RUN=1
+  PYTHON_BIN="uv run python"
+elif [ -x "$SCRIPT_DIR/.venv/bin/python" ]; then
   PYTHON_BIN="$SCRIPT_DIR/.venv/bin/python"
 elif command -v python3 >/dev/null 2>&1; then
   PYTHON_BIN="$(command -v python3)"
@@ -313,7 +317,11 @@ while true; do
   log "Attempt #$ATTEMPT: launching daily.py."
 
   set +e
-  "$PYTHON_BIN" "$SCRIPT_DIR/daily.py"
+  if [ "$USE_UV_RUN" = "1" ]; then
+    uv run python "$SCRIPT_DIR/daily.py"
+  else
+    "$PYTHON_BIN" "$SCRIPT_DIR/daily.py"
+  fi
   EXIT_CODE=$?
   set -e
 
