@@ -34,6 +34,7 @@ CORE_VIP_AUTHORS = [
     "He Wang",
     "Donglin Wang",
     "Yue Wang",
+    "Jianlan Luo"
 ]
 EXTENDED_VIP_AUTHORS = [
     "Fei Xia",
