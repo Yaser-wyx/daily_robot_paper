@@ -12,6 +12,10 @@ class ArxivNotUpdatedError(RuntimeError):
     """Raised when arXiv new submissions have not rolled over to the local day yet."""
 
 
+class ArxivFetchRetryableError(RuntimeError):
+    """Raised when the arXiv listing fetch failed for a likely transient reason."""
+
+
 def fetch_arxiv_papers():
     """Fetch and parse structured data from arXiv new submissions."""
     print(f"🌐 [Harvester] Fetching from: {ARXIV_URL} ...")
@@ -19,12 +23,14 @@ def fetch_arxiv_papers():
     try:
         response = requests.get(ARXIV_URL, headers=REQUEST_HEADERS, timeout=15)
         response.raise_for_status()
-    except requests.exceptions.Timeout:
+    except requests.exceptions.Timeout as exc:
         print("❌ [Error] Network request timed out while fetching arXiv.")
-        return None
+        raise ArxivFetchRetryableError("arXiv request timed out") from exc
     except requests.exceptions.HTTPError as exc:
         status_code = exc.response.status_code if exc.response is not None else "unknown"
         print(f"❌ [Error] arXiv returned HTTP status {status_code}.")
+        if isinstance(status_code, int) and 500 <= status_code <= 599:
+            raise ArxivFetchRetryableError(f"arXiv returned HTTP status {status_code}") from exc
         return None
     except requests.exceptions.ConnectionError as exc:
         error_text = str(exc)
@@ -32,10 +38,10 @@ def fetch_arxiv_papers():
             print("❌ [Error] DNS resolution failed while connecting to arXiv. Check network or DNS settings.")
         else:
             print(f"❌ [Error] Could not connect to arXiv: {exc}")
-        return None
+        raise ArxivFetchRetryableError("could not connect to arXiv") from exc
     except requests.exceptions.RequestException as exc:
         print(f"❌ [Error] Network request failed: {exc}")
-        return None
+        raise ArxivFetchRetryableError("arXiv request failed") from exc
 
     soup = BeautifulSoup(response.text, "html.parser")
 

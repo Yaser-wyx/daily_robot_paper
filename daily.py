@@ -2,6 +2,7 @@ import sys
 
 from robopulse import codex_client as _codex_client
 from robopulse.arxiv import (  # noqa: F401
+    ArxivFetchRetryableError,
     ArxivNotUpdatedError,
     discover_versioned_id,
     fetch_arxiv_html,
@@ -28,6 +29,7 @@ from robopulse.config import (  # noqa: F401
     INTERESTS,
     OUTPUT_DIR,
     REQUEST_HEADERS,
+    RETRYABLE_GENERATION_EXIT_CODE,
     SECTION_PATTERNS,
     SELECTED_TARGET,
     SHORTLIST_CONTEXT_LIMIT,

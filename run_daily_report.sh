@@ -7,10 +7,12 @@ LOG_FILE="$SCRIPT_DIR/daily_run.log"
 LOG_DIR="$SCRIPT_DIR/logs"
 LOCK_FILE="${TMPDIR:-/tmp}/daily_paper-$(basename "$SCRIPT_DIR").lock"
 ARXIV_NOT_UPDATED_EXIT_CODE=75
+RETRYABLE_GENERATION_EXIT_CODE=76
 MAX_LOG_SIZE_BYTES="${MAX_LOG_SIZE_BYTES:-5242880}"
 MAX_LOG_ARCHIVES="${MAX_LOG_ARCHIVES:-14}"
 AUTO_GIT_PUBLISH="${AUTO_GIT_PUBLISH:-1}"
 AUTO_GIT_REMOTE="${AUTO_GIT_REMOTE:-origin}"
+RETRY_SLEEP_SECONDS="${RETRY_SLEEP_SECONDS:-3600}"
 
 cd "$SCRIPT_DIR"
 
@@ -41,13 +43,34 @@ log_exit_status() {
     log "Run finished successfully."
   elif [ "$exit_code" -eq "$ARXIV_NOT_UPDATED_EXIT_CODE" ]; then
     log "Run finished with arXiv-not-updated status ($exit_code)."
+  elif [ "$exit_code" -eq "$RETRYABLE_GENERATION_EXIT_CODE" ]; then
+    log "Run finished with retryable-generation-exhausted status ($exit_code)."
   else
     log "Run failed with exit code $exit_code."
   fi
 }
 
+is_retryable_exit_code() {
+  local exit_code="$1"
+  [ "$exit_code" -eq "$ARXIV_NOT_UPDATED_EXIT_CODE" ] || [ "$exit_code" -eq "$RETRYABLE_GENERATION_EXIT_CODE" ]
+}
+
+retry_delay_label() {
+  if [ "$RETRY_SLEEP_SECONDS" -eq 3600 ]; then
+    printf '1 hour'
+  else
+    printf '%s seconds' "$RETRY_SLEEP_SECONDS"
+  fi
+}
+
 next_retry_at() {
-  date -d '+1 hour' '+%Y-%m-%d %H:%M:%S'
+  if date -d "+$RETRY_SLEEP_SECONDS seconds" '+%Y-%m-%d %H:%M:%S' >/dev/null 2>&1; then
+    date -d "+$RETRY_SLEEP_SECONDS seconds" '+%Y-%m-%d %H:%M:%S'
+  elif date -v+"${RETRY_SLEEP_SECONDS}S" '+%Y-%m-%d %H:%M:%S' >/dev/null 2>&1; then
+    date -v+"${RETRY_SLEEP_SECONDS}S" '+%Y-%m-%d %H:%M:%S'
+  else
+    date '+%Y-%m-%d %H:%M:%S'
+  fi
 }
 
 github_https_to_ssh() {
@@ -244,7 +267,11 @@ rotate_log_if_needed() {
     fi
   fi
 
-  mapfile -t archives < <(find "$LOG_DIR" -maxdepth 1 -type f -name 'daily_run-*.log' | sort)
+  archives=()
+  while IFS= read -r archive_path; do
+    archives+=("$archive_path")
+  done < <(find "$LOG_DIR" -maxdepth 1 -type f -name 'daily_run-*.log' | sort)
+
   if [ "${#archives[@]}" -gt "$MAX_LOG_ARCHIVES" ]; then
     local delete_count=$(( ${#archives[@]} - MAX_LOG_ARCHIVES ))
     for ((i = 0; i < delete_count; i++)); do
@@ -302,6 +329,11 @@ else
   exit 1
 fi
 
+if [[ ! "$RETRY_SLEEP_SECONDS" =~ ^[0-9]+$ ]]; then
+  log "Invalid RETRY_SLEEP_SECONDS=$RETRY_SLEEP_SECONDS. Expected a non-negative integer."
+  exit 1
+fi
+
 RUN_DATE="$(date '+%Y-%m-%d')"
 ATTEMPT=1
 
@@ -334,19 +366,28 @@ while true; do
     exit 0
   fi
 
-  if [ "$EXIT_CODE" -ne "$ARXIV_NOT_UPDATED_EXIT_CODE" ]; then
+  if ! is_retryable_exit_code "$EXIT_CODE"; then
     log "Report generation failed with exit code $EXIT_CODE. Not retrying automatically."
     exit "$EXIT_CODE"
   fi
 
   CURRENT_DATE="$(date '+%Y-%m-%d')"
   if [ "$CURRENT_DATE" != "$RUN_DATE" ]; then
-    log "The local date rolled over to $CURRENT_DATE. Stop retrying the stale arXiv run for $RUN_DATE."
-    exit "$ARXIV_NOT_UPDATED_EXIT_CODE"
+    if [ "$EXIT_CODE" -eq "$ARXIV_NOT_UPDATED_EXIT_CODE" ]; then
+      log "The local date rolled over to $CURRENT_DATE. Stop retrying the stale arXiv run for $RUN_DATE."
+    else
+      log "The local date rolled over to $CURRENT_DATE. Stop retrying retryable generation failures for $RUN_DATE."
+    fi
+    exit "$EXIT_CODE"
   fi
 
   RETRY_TIME="$(next_retry_at)"
-  log "arXiv is not updated yet for the local day. Retrying in 1 hour at $RETRY_TIME."
+  RETRY_DELAY_LABEL="$(retry_delay_label)"
+  if [ "$EXIT_CODE" -eq "$ARXIV_NOT_UPDATED_EXIT_CODE" ]; then
+    log "arXiv is not updated yet for the local day. Retrying in $RETRY_DELAY_LABEL at $RETRY_TIME."
+  else
+    log "Report generation hit a retryable failure. Retrying in $RETRY_DELAY_LABEL at $RETRY_TIME."
+  fi
   ATTEMPT=$((ATTEMPT + 1))
-  sleep 3600
+  sleep "$RETRY_SLEEP_SECONDS"
 done

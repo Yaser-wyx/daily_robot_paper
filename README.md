@@ -151,8 +151,10 @@ Behavior:
 - runs Monday through Friday at `10:00` local time
 - does not run on Saturday or Sunday
 - if arXiv has not updated to the local day yet, retries every hour
+- if report generation hits a retryable failure after runtime prerequisites pass, retries every hour
 - stops retrying after success or once the local date rolls over
-- only the stale-arXiv case retries automatically; other failures stop immediately
+- set `RETRY_SLEEP_SECONDS` to override the retry interval for tests or debugging
+- runtime prerequisite failures and git publishing failures do not retry automatically
 
 ## Logs
 
