@@ -1,53 +1,53 @@
 # RoboPulse | 2026-06-05
 
 > **Focus**: VLA (Vision-Language-Action), Sim2Real, Reinforcement Learning + Vision-Language-Action, World Model, World Action Model
-> **Pipeline**: 82 papers scanned · 10 shortlisted · 5 editor's picks
+> **Pipeline**: 82 papers scanned · 10 shortlisted · 6 editor's picks
 
-今天的主线非常集中：VLA 后训练、闭环世界模型评估、世界-语言-动作统一建模，以及把推理、affordance、速度或医疗数据先验接入机器人策略。最终精选的五篇都直接触到 VLA 可部署性的关键瓶颈：失败样本如何利用、闭环 rollout 如何替代昂贵真机测试、世界模型如何服务动作生成、VLM 语义空间如何落到可执行 affordance，以及测试时计算如何提升长程鲁棒性。它们未必都有 VIP 作者背书，但议题密度高，和 VLA/RL/world model 的后续系统设计关系更直接。VIP 作者里今天最值得优先跟踪的是 LadderMan 的 Pieter Abbeel 与 Yue Wang，以及 Open-H-Embodiment 的 Chelsea Finn；前者偏真实 humanoid sim2real 与全身控制，后者偏医疗机器人 foundation dataset 和 VLA 迁移。
+今天的主线很清晰：VLA 后训练、闭环评估、可扩展推理和 World/World-Action Model 正在从“能跑 benchmark”转向“能解释、能提速、能进入真实控制回路”。最终精选保留了六篇互补论文：FlowPRO 代表无奖励偏好优化，PiL-World 代表 policy-in-the-loop 世界模型评估，WLA/MPCoT/TempoVLA 分别切入统一世界-语言-动作建模、测试时 latent reasoning、速度可控执行，Flash-WAM 则解决 WAM 实时化瓶颈。今天最终精选里没有核心 VIP 作者，但 watchlist 中 LadderMan 同时出现 Pieter Abbeel 与 Yue Wang，TAM 出现 Dieter Fox，值得作为 Sim2Real 与全身控制方向的优先跟踪对象。整体看，VLA 的竞争焦点正在从单步动作预测转向后训练数据构造、闭环想象 rollout、动作条件世界建模和部署时可控性。
 
 ## 今日信号
 
-- VLA 研究正在从“直接模仿动作”转向“后训练、偏好、affordance、latent reasoning 等中间机制”，目标是把失败模式显式纳入优化。
-- World model / WAM 不再只是开放环视频预测，而开始服务闭环 policy-in-the-loop 评估、动作生成加速和测试时 scaling。
-- Sim2Real 的重点正在从单纯 domain randomization 扩展到数据可执行性、感知几何校正、真实部署闭环验证和安全/速度可控。
+- VLA 后训练正在绕开奖励函数与 critic，转向偏好对、失败干预和 proximal 约束这类更贴近真实机器人采集成本的信号。
+- World Model/WAM 的价值不再只是生成未来图像，而是被重新包装成闭环评估、动作推理、测试时扩展和实时控制接口。
+- 速度、延迟和行动节奏开始成为 VLA 论文的一等问题，说明部署可控性正在进入模型结构与训练目标本身。
 
 ## Historical Rediscovery
 
-- **Paper**: See Less, Specify More: Visual Evidence Budgets for Generalizable VLAs [[HTML]](https://arxiv.org/html/2606.02735) [[PDF]](https://arxiv.org/pdf/2606.02735)
-  - **Paper ID**: `2606.02735`
-  - **来源日期**: 2026-06-03
-  - **当时可能被低估的信号**: “Specify More”用更细的轨迹/子任务语言降低执行歧义，“See Less”用 visual evidence budget 抑制无关视觉干扰；这不是泛泛的 VLA 改进，而是直接针对泛化失败时的输入与指令接口。
-  - **为什么现在值得再看**: 现在值得再看，因为 VLA 真实部署越来越依赖可控的语言粒度、视觉证据选择和跨任务泛化；它可作为 VLA policy 接口设计和 World Action Model 输入约束的参考。
+- **Paper**: CLAW: Learning Continuous Latent Action World Models via Adversarial Latent Regularization [[HTML]](https://arxiv.org/html/2606.04130) [[PDF]](https://arxiv.org/pdf/2606.04130)
+  - **Paper ID**: `2606.04130`
+  - **来源日期**: 2026-06-04
+  - **当时可能被低估的信号**: 当时可能低估了“adversarial latent regularization + action-free video + controllability benchmark”这个组合，因为它不是大规模真实机器人/VLA 部署论文，但它针对的是 WAM 能否从视频中学出可控动作变量的核心瓶颈。
+  - **为什么现在值得再看**: 如果现在关注 RL+VLA、world-action reasoning 或用互联网/机器人视频做可规划表征，这篇比普通视觉表示学习更值得重看；重点应判断 latent action 是否能成为后续机器人控制或 VLA 后训练的中间接口。
   - **建议动作**: 加入精读
-  - **关键词**: `VLA` `generalization` `visual evidence budget` `instruction interface` `OpenPI`
-- **Paper**: AirDreamer: Generalist Drone Navigation with World Models [[HTML]](https://arxiv.org/html/2606.03252) [[PDF]](https://arxiv.org/pdf/2606.03252)
-  - **Paper ID**: `2606.03252`
-  - **来源日期**: 2026-06-03
-  - **当时可能被低估的信号**: 历史记录里明确提到 Dreamer V3 world model 与 RL policy 用于未知杂乱环境导航，并报告仿真到真实 drone transfer；这类真实迁移信号容易被“非操作任务”标签低估。
-  - **为什么现在值得再看**: 值得今天再看，因为它能补 World Model 在真实闭环控制中的证据，尤其是从仿真学习到真实平台执行的链路；对 Sim2Real 和长时程导航式 World Action Model 有参考价值。
+  - **关键词**: `World Model` `World Action Model` `latent action` `action-free video` `controllability`
+- **Paper**: WAM-Nav: Asymmetric Latent World-Action Modeling for Unified Visual Navigation [[HTML]](https://arxiv.org/html/2606.04907) [[PDF]](https://arxiv.org/pdf/2606.04907)
+  - **Paper ID**: `2606.04907`
+  - **来源日期**: 2026-06-04
+  - **当时可能被低估的信号**: 当时因为任务域偏 navigation、训练依赖仿真导航数据而降级，但“asymmetric action-foresight design”和 zero-shot real-world navigation 的线索可能对移动操作和 embodied policy 有迁移价值。
+  - **为什么现在值得再看**: World Action Model 不一定只从 manipulation 起步；导航中的 action-conditional foresight、实时性和真实部署评测，可能给长时程 VLA/移动操作提供可借鉴的架构信号。
+  - **建议动作**: 快速浏览
+  - **关键词**: `World Action Model` `visual navigation` `latent foresight` `real-world navigation` `long-horizon`
+- **Paper**: 3DThinkVLA: Endowing Vision-Language-Action Models with Latent 3D Priors via 3D-Thinking-Guided Co-training [[HTML]](https://arxiv.org/html/2606.04436) [[PDF]](https://arxiv.org/pdf/2606.04436)
+  - **Paper ID**: `2606.04436`
+  - **来源日期**: 2026-06-04
+  - **当时可能被低估的信号**: 当时主要被 LIBERO、SimplerEnv 等模拟 benchmark 证据拖低优先级，但“3D foundation model 蒸馏、reasoning anchor token、zero-shot transfer”这些设计正好对应 VLA 空间泛化短板。
+  - **为什么现在值得再看**: 当前 VLA 的瓶颈之一仍是空间理解和跨场景泛化；这篇值得用 benchmark audit 的视角重看，判断其 3D prior 是否只是 benchmark 增益，还是能成为 Sim2Real VLA 表征模块。
   - **建议动作**: 加入精读
-  - **关键词**: `World Model` `Dreamer V3` `RL` `Sim2Real` `real drone transfer`
-- **Paper**: AsyncShield: A Plug-and-Play Edge Adapter for Asynchronous Cloud-based VLA Navigation [[HTML]](https://arxiv.org/html/2604.24086) [[PDF]](https://arxiv.org/pdf/2604.24086)
-  - **Paper ID**: `2604.24086`
-  - **来源日期**: 2026-04-28
-  - **当时可能被低估的信号**: 历史 note 里提到它把云端 VLA 导航延迟拆成几何映射、约束优化和 RL 适配三部分；这个组合说明它不是单纯系统工程，而是在处理 VLA action 滞后下的闭环安全问题。
-  - **为什么现在值得再看**: 现在值得再看，因为真实部署评测不能只看离线成功率，还要看网络延迟、异步动作和边缘安全适配；它与 VLA 实机部署、RL 适配和 closed-loop action reliability 强相关。
-  - **建议动作**: 快速浏览
-  - **关键词**: `VLA deployment` `asynchronous control` `edge adapter` `RL adaptation` `navigation`
-- **Paper**: RopeDreamer: A Kinematic Recurrent State Space Model for Dynamics of Flexible Deformable Linear Objects [[HTML]](https://arxiv.org/html/2604.28161) [[PDF]](https://arxiv.org/pdf/2604.28161)
-  - **Paper ID**: `2604.28161`
-  - **来源日期**: 2026-05-01
-  - **当时可能被低估的信号**: 历史 note 里强调 recurrent state space model、quaternion kinematic chain 和长时预测中的拓扑保持；这说明它关注的不是短视感知，而是物理一致的长期 dynamics。
-  - **为什么现在值得再看**: 值得再看，因为 World Model 和 World Action Model 若要进入 contact-rich manipulation，必须处理可变形物体的稳定预测与状态表示；这篇可作为窄域但扎实的物理 world model 参照。
-  - **建议动作**: 快速浏览
-  - **关键词**: `World Model` `deformable object` `long-horizon prediction` `RSSM` `robot manipulation`
-- **Paper**: BifrostUMI: Bridging Robot-Free Demonstrations and Humanoid Whole-Body Manipulation [[HTML]](https://arxiv.org/html/2605.03452) [[PDF]](https://arxiv.org/pdf/2605.03452)
-  - **Paper ID**: `2605.03452`
-  - **来源日期**: 2026-05-06
-  - **当时可能被低估的信号**: 历史 note 里提到便携 VR、稀疏关键点、wrist-view 视觉和 whole-body coordination 的联动；这些是把 robot-free demonstrations 转成 humanoid 操作数据时非常具体的可复用信号。
-  - **为什么现在值得再看**: 现在值得再看，因为真实部署和长时程操作越来越依赖低成本、高覆盖的数据采集；它与 humanoid VLA、跨 embodiment 数据、Sim2Real 训练管线都有直接关系。
+  - **关键词**: `VLA` `3D priors` `spatial reasoning` `Sim2Real` `zero-shot transfer`
+- **Paper**: What Are We Actually Benchmarking in Robot Manipulation? [[HTML]](https://arxiv.org/html/2606.04233) [[PDF]](https://arxiv.org/pdf/2606.04233)
+  - **Paper ID**: `2606.04233`
+  - **来源日期**: 2026-06-04
+  - **当时可能被低估的信号**: 当时可能因“不提出新 VLA/WAM 系统”而低估，但它提供的是评估可信度过滤器，尤其能约束对高分 VLA、3D-VLA、Sim2Real 结果的解读。
+  - **为什么现在值得再看**: 今天再看任何依赖仿真 benchmark 的 VLA、RL+VLA 或 world model 论文，都需要先知道哪些分数可能不代表真实部署能力；它和真实部署评测强相关。
+  - **建议动作**: 加入精读
+  - **关键词**: `benchmark audit` `VLA evaluation` `Sim2Real` `real deployment` `manipulation benchmarks`
+- **Paper**: Wiggle and Go! System Identification for Zero-Shot Dynamic Rope Manipulation [[HTML]](https://arxiv.org/html/2604.22102) [[PDF]](https://arxiv.org/pdf/2604.22102)
+  - **Paper ID**: `2604.22102`
+  - **来源日期**: 2026-04-27
+  - **当时可能被低估的信号**: 当时因为任务域偏动态绳索而被视为支线，但“高风险操作前主动辨识环境/物体动力学”的思想，比单任务技巧更接近可部署机器人策略需要的闭环世界建模。
+  - **为什么现在值得再看**: 对 Sim2Real、World Model 和长时程真实操作来说，关键不只是离线学模型，而是部署时如何用少量交互更新可控动力学假设；这篇可作为 WAM/VLA 真实闭环前的实用参照。
   - **建议动作**: 继续跟踪
-  - **关键词**: `humanoid manipulation` `robot-free demonstrations` `whole-body coordination` `VLA data` `Sim2Real`
+  - **关键词**: `Sim2Real` `system identification` `world-aware control` `deformable manipulation` `closed-loop probing`
 
 ## Editor's Picks
 
@@ -55,245 +55,280 @@
 * **Paper ID**: `2606.05468`
 * **Authors**: Yihao Wu, He Zhang, Junbo Tan, Xueqian Wang, Zhengyou Zhang
 * **Author Priority**: Standard
-* **一句话结论**: 值得优先看，因为 FlowPRO 直接瞄准 flow-matching VLA 的真实机器人后训练瓶颈，用 reward-free preference optimization 处理失败信号。
-* **关键词**: `VLA 后训练` `flow matching` `preference optimization` `reward-free RL` `real robot bimanual`
+* **一句话结论**: 值得优先看，因为 FlowPRO 直接瞄准真实机器人 VLA 后训练的核心痛点：不用显式奖励和 critic，也能利用失败偏好改进 flow-matching action head。
+* **关键词**: `VLA 后训练` `flow matching` `preference optimization` `reward-free RL` `real-robot bimanual`
 * **证据来源**: arXiv HTML (Introduction, Method, Experiments, Conclusion)
 
 #### 📖 背景与动机
 
-这篇的核心问题是：VLA 已经能把视觉、语言和低层动作接在一起，但把一个 SFT 得到的模型后训练到真实机器人可部署水平仍然很难。摘要和引言明确指出，SFT 与 DAgger 类方法虽然能利用人类示范或纠正，但对失败信号的利用偏间接；reward-based RL 又依赖真实世界奖励设计和稳定 critic，成本与风险都高。对 flow-matching VLA 来说，这个问题更尖锐，因为动作头不是普通离散语言策略，直接套 RLHF/DPO 的假设可能导致 likelihood underdetermination 或 reward hacking 式退化。FlowPRO 的动机因此很清楚：在没有显式 reward model、也不依赖在线 RL 的情况下，从真实机器人干预数据里构造偏好监督，让模型专门修复困难失败模式。
+VLA 已经成为通用机器人策略的重要范式，但从可演示到可部署之间仍有明显鸿沟。SFT 和 DAgger 能扩展到真实硬件，却往往只间接利用失败信息；基于奖励的 RL 又受限于真实任务奖励设计和 critic 可靠性。FlowPRO 的重要性在于它把问题落到 flow-matching VLA 的后训练：如何在不写奖励、不训练显式价值模型的情况下，把 teleoperation 中的成功、失败、回滚和偏好信号变成稳定的策略改进。对长时程双臂任务来说，这比单纯扩大演示数据更贴近部署瓶颈。
 
 #### ⚙️ 核心方法
 
-FlowPRO 是一个 reward-free offline reinforced fine-tuning 框架，核心算法是 RPRO，即 Robotic Flow-matching Proximalized Preference Optimization。当前摘录可以确认它从 RLHF、DPO、PRO 的理论线索出发，把偏好优化改写到 flow-matching action head 上：一方面保留 preferred 与 dispreferred action pair 的 contrastive optimizer，用相对偏好推动策略远离失败动作；另一方面加入显式 proximal regularizer，避免普通 Flow-DPO 中只约束相对似然而导致正负样本似然一起下降的病理。方法部分还提到 teleoperated intervention-and-rollback 数据收集范式和数据处理管线，这意味着偏好对不是抽象标注，而是来自真实执行中的失败、人工介入、回滚和修正。实验问题里出现 state-wise Smooth Interpolation 与 trajectory-wise preference contrast 的比较，说明它不是只比较整条轨迹优劣，而试图把纠偏信号更细粒度地对齐到状态层面。相对已有后训练路线的新意在于：既绕开显式 reward/critic，又针对 flow-matching VLA 的动作分布形式设计了 proximalized preference loss。
+FlowPRO 的核心是 RPRO，即面向 flow-matching action head 的 Robotic Flow-matching Proximalized Preference Optimization。摘录显示，作者从 RLHF、DPO、PRO 的理论出发，指出普通 DPO 只约束 preferred 与 dispreferred action 的相对似然，可能出现两者似然一起下降的 underdetermination，从而形成无显式奖励下的 reward-hacking 类失败。RPRO 将 preference objective 拆成 contrastive optimizer 与显式 proximal regularizer，使策略既能拉开偏好动作对，又避免偏离参考策略过远。数据侧，FlowPRO 结合 teleoperated intervention-and-rollback paradigm，并提出 state-wise Smooth Interpolation 来构造偏好数据，而不是只做 trajectory-wise preference contrast。整体流程是先训练 base SFT policy 作为 frozen reference，再用干预/回滚数据离线 fine-tune。当前摘录能确认这些模块与目标，但具体 RPRO 公式细节、插值实现和 Algorithm 2 的逐步伪代码需要 PDF 核查。
 
 #### 📊 实验与结果
 
-摘录显示实验覆盖四个轴：整体性能、数据构造、loss 设计和组件归因。硬件是 Dobot XTrainer bimanual platform，任务包括 Pack、Cap、USB、Case 四个长程双臂任务，分别涉及亚厘米插入、空中协调、亚毫米精度和可变形长程打包等困难因素。训练流程是先用 SFT 得到 base policy 和 reference policy，再进行多轮 RPRO fine-tuning。评估为了控制训练随机性，每个表项来自 3 个独立训练 seed，并报告跨 seed 的均值和标准差。结论声称 FlowPRO 在四个长程真实机器人任务和两个 π-family base policies 上取得最高 success rate 与最短 completion time，并优于四个代表性 baseline 及 loss 组合。摘录没有给出具体表格数字，因此只能把“最高”和“最短”作为作者结论引用，不能进一步比较幅度。
+实验覆盖四个长时程双臂真实机器人任务：Pack、Cap、USB、Case，平台是 Dobot XTrainer bimanual。作者按四个问题评估：总体性能是否优于 positive-only 与 positive-and-negative baseline，state-wise Smooth Interpolation 是否优于 trajectory-wise contrast，proximal regularizer 是否缓解 plain Flow-DPO 的 reward-hacking，以及 SFT term/proximal regularizer 的单独贡献。摘录明确说每个 Table 1 entry 来自 3 个独立训练 seed，并报告跨 seed mean/std；结论称 FlowPRO 在四个任务和两个 base policy family 上获得最高成功率和最短完成时间。但具体成功率、完成时间和 baseline 名称在摘录中不完整，不能引用。
 
 #### ⚠️ 风险 / 保留意见
 
-- 真实任务数量为四个，虽然难度高，但跨平台、跨对象和跨语言泛化证据仍需看完整实验。
-- 偏好数据依赖 teleoperation intervention-and-rollback，部署成本和标注一致性可能是复现风险。
-- RPRO 对 flow-matching action head 定制较强，迁移到 diffusion、autoregressive 或离散动作 VLA 时未必直接成立。
+- 真实机器人任务虽强相关，但平台集中在 Dobot XTrainer 双臂，跨 embodiment 泛化仍需验证。
+- 偏好数据依赖 teleoperated intervention-and-rollback，采集流程可能比摘要表述更复杂。
+- 关键优势依赖 RPRO loss 与数据构造共同作用，复现时需要确认插值、负样本和 reference policy 细节。
 
 #### 💭 结论与启发
 
-这篇对后续选题的启发在于，VLA 后训练可以绕开显式奖励，但不能绕开“失败信号如何结构化”的问题。值得重点学习它如何把真实机器人干预转成 state-wise preference pair，以及 proximal regularizer 如何在 flow-matching 目标里防止偏好优化漂移。如果要复现，优先不应追求完整双臂硬件，而应先在现有 VLA action head 上实现 Flow-DPO/RPRO 对照，验证是否真的能消除负样本偏好优化带来的分布坍缩。
+这篇最值得借鉴的是“把失败信号变成可优化偏好对”的系统化设计。对后续选题来说，FlowPRO 提示 VLA 后训练不一定要走昂贵 reward model 或在线 RL，尤其在 flow-matching action head 下，proximal 约束可能是稳定性的关键。复现时应优先复核数据构造和 loss ablation，而不是只看最终成功率；系统设计上可把 intervention、rollback、preference labeling 做成长期数据闭环。
 
 #### 🔎 读 PDF 先核查
 
-- RPRO 的 proximal regularizer 在 flow-matching loss 中具体约束的是路径、噪声时间步还是动作分布似然？
-- state-wise Smooth Interpolation 如何从 intervention-and-rollback 轨迹中构造 preferred/dispreferred action pair？
-- FlowPRO 对两个 π-family base policies 的提升是否来自同一类失败模式，还是任务相关性很强？
+- RPRO 的 proximal regularizer 如何具体作用到 flow-matching action distribution，而不是普通 log-prob policy？
+- state-wise Smooth Interpolation 构造的 preferred/dispreferred 对是否会引入人为轨迹平滑偏差？
+- FlowPRO 的提升主要来自负样本偏好信号，还是来自 SFT term 与 proximal reference 的稳定化？
 
 #### 📌 上传 PDF 后优先看
 
-- RPRO loss 推导与 Flow-DPO 对比章节
-- teleoperated intervention-and-rollback 数据构造流程
-- 四个真实双臂任务的 baseline、ablation 和 failure mode 分析
+- RPRO objective 与 Flow-DPO/PRO 的公式推导章节
+- teleoperated intervention-and-rollback 数据采集与 Smooth Interpolation 章节
+- 四个真实双臂任务的 baseline、ablation 和 seed 方差表
 
 ### [2]. PiL-World: A Chunk-Wise World Model for VLA Policy-in-the-Loop Evaluation [[HTML]](https://arxiv.org/html/2606.05773) [[PDF]](https://arxiv.org/pdf/2606.05773) [[ChatGPT]](https://chatgpt.com/)
 * **Paper ID**: `2606.05773`
 * **Authors**: Chong Ma, Taiyi Su, Jian Zhu, Jianjun Zhang, Zitai Huang, Yi Xu, Hanli Wang
 * **Author Priority**: Standard
-* **一句话结论**: 值得优先看，因为 PiL-World 把 world model 从开放环预测推进到 VLA policy-in-the-loop 闭环评估。
-* **关键词**: `policy-in-the-loop` `world model` `closed-loop evaluation` `VLA benchmark` `dual-arm manipulation`
+* **一句话结论**: 值得优先看，因为 PiL-World 把世界模型从 open-loop 预测推进到 VLA policy-in-the-loop 闭环评估，这是低成本筛选机器人策略的关键接口。
+* **关键词**: `policy-in-the-loop` `world model` `VLA evaluation` `closed-loop rollout` `multi-view prediction`
 * **证据来源**: arXiv HTML (Introduction, Method, Experiments, Conclusion)
 
 #### 📖 背景与动机
 
-这篇抓住了 VLA 评估中的一个现实落差：真实机器人部署时，策略不是一次性输出完整动作序列，而是在观察、执行 action chunk、再观察的闭环里不断改变状态分布。许多机器人 world model 或视频预测方法可以沿着预收集轨迹做开放环预测，但这不足以评价一个 VLA 在自己动作造成的新状态下会如何继续决策。真实机器人闭环测试又受限于硬件安全、场景重置和吞吐量，难以大规模筛选策略。PiL-World 的动机因此是构造一个能和 VLA 策略交替运行的 chunk-wise world model，用生成的未来观察喂回策略，让 imagined rollout 更接近真实部署的反馈环。对 VLA、world model 和 sim2real 方向来说，这类评估工具可能比单纯提升视频预测指标更有系统价值。
+真实 VLA 部署不是一次性预测完整动作序列，而是观察、执行 action chunk、再观察、再决策的闭环过程。许多机器人 world model 只沿着预采集轨迹做 open-loop future prediction，无法模拟策略自己导致的状态分布漂移。PiL-World 的问题意识很重要：如果世界模型不能把 VLA 上一步执行后的生成观测再喂回策略，它就很难用于可靠评估。对真实机器人来说，硬件安全、场景复位和实验吞吐都限制评测规模，因此一个 chunk-wise、multi-view、policy-in-the-loop 的 imagined rollout 环境有实际价值。
 
 #### ⚙️ 核心方法
 
-当前摘录只能确认 PiL-World 的总体机制，方法细节不足以展开具体架构。它被定义为 policy-in-the-loop VLA evaluation 的 chunk-wise world model：输入当前 observation 和 VLA policy 预测出的 action chunk，生成与该动作执行一致的 multi-view future observations，并且这些生成观察要匹配 VLA 下一次推理所需的图像输入格式。随后系统交替执行两步：VLA 根据当前或生成观察输出下一段动作，PiL-World 根据该动作段预测执行后的多视角观察。这样多个 action chunks 被组合成闭环 imagined rollout。相对开放环 world model，关键接口变化是“动作来自被评估策略本身”，而不是预录数据；“下一步输入来自模型生成结果”，而不是 ground-truth trajectory。摘录未给出具体视频生成 backbone、状态表示、训练损失或多视角一致性约束，因此这些只能作为待核查内容，不能假设它使用某种扩散、Transformer 或显式动力学模块。
+当前摘录只能确认 PiL-World 的高层机制：给定当前 observation 和 VLA policy 生成的 action chunk，PiL-World 生成与该 chunk 一致的多视角未来观测，并且这些未来观测匹配 VLA 下一次 inference 所需的图像输入。系统通过交替执行 VLA inference 与 world-model prediction，把多个 action chunk 串成闭环 imagined rollout。与 open-loop world model 的区别在于，下一步 action 不再来自离线轨迹，而来自被评估的 VLA 策略；下一步 observation 也不是真实环境或数据集帧，而是由 PiL-World 根据前一 chunk 预测得到。这个接口使世界模型成为策略评估器，而不只是视频预测器。摘录没有提供网络结构、训练损失、action chunk 表示、多视角相机建模或误差累积控制细节，因此这些部分只能视为合理推断，需要 PDF 进一步确认。
 
 #### 📊 实验与结果
 
-摘录显示 PiL-World 在三个真实 dual-arm manipulation tasks 上做验证，并声称能提升 policy-in-the-loop evaluation 的有效性。引言与结论强调，它生成每个 chunk 结束后的 final observation，再作为下一次 policy query 的输入，因此实验应重点关注 imagined closed-loop rollout 是否能区分不同 VLA 策略、是否与真实机器人结果相关，以及是否优于开放环预测式评估。当前 HTML 摘录的 Experiments 部分基本回退到摘要内容，没有提供 benchmark 名称、任务细节、量化指标、对比方法或具体数字。因此结果只能保守表述为：作者报告了三项真实双臂任务上的闭环评估改进，但改进幅度和统计证据需要打开 PDF 后核查。
+摘录中的 Experiments 部分基本回退为摘要内容，缺少完整实验设置和指标细节。可以确认的是，论文声称在三个真实 dual-arm manipulation tasks 上评估 PiL-World，并在结论中表示其用于 policy-in-the-loop VLA evaluation 时带来改进。能明确的证据边界是：它关注闭环 imagined rollout，而非单帧预测；它生成 multi-view future observations；它将最终生成观测作为下一次策略 query 的输入。具体任务名称、VLA baseline、评估指标、与真实执行结果的相关性、是否可替代真实机器人测试，目前摘录不足以判断。
 
 #### ⚠️ 风险 / 保留意见
 
-- HTML 摘录缺少具体模型结构和量化结果，当前只能确认研究目标与闭环接口。
-- 闭环 imagined rollout 容易累积视觉生成误差，生成观察是否会误导 VLA 是核心风险。
-- 如果只在三个真实双臂任务上验证，评估相关性对更多任务和策略族的泛化仍不确定。
+- 实验细节在摘录中严重不足，难以判断闭环评估与真实成功率的相关性。
+- 世界模型误差会在多 chunk rollout 中累积，可能高估或低估策略表现。
+- 如果生成观测分布与真实相机输入有偏差，VLA 下一步 action 可能被评估器伪影误导。
 
 #### 💭 结论与启发
 
-这篇的价值不在于又做一个视频预测模型，而在于把 world model 的评估对象从 dataset trajectory 改成 VLA 策略本身。后续如果做 VLA benchmark，可以借鉴它的接口设计：评估器必须吃 policy action chunk，并返回 policy 下一步真实会使用的观测模态。复现时应优先验证 imagined rollout 与真实 rollout 的排名相关性，而不是只看生成图像质量；否则 world model 可能看起来逼真，却不能帮助选择更可靠的机器人策略。
+PiL-World 的启发在于把 world model 设计成“策略评测基础设施”。后续阅读应重点检查它是否真的能预测策略排名，而不只是生成合理视频。对于自己的系统设计，可以把这种接口用于离线筛选 checkpoint、比较 action chunk 策略、提前发现闭环失败模式；但部署前仍应保留真实机器人验证，因为 imagined rollout 的误差闭环风险很高。
 
 #### 🔎 读 PDF 先核查
 
-- PiL-World 的训练目标如何保证生成的 multi-view observation 与 VLA action chunk 因果一致？
-- 作者如何量化 imagined closed-loop evaluation 与真实机器人成功率之间的相关性？
-- 生成误差跨多个 action chunks 累积时，PiL-World 是否有重置、校正或不确定性估计机制？
+- PiL-World 生成的多视角未来观测与真实 rollout 在策略排名上相关性有多强？
+- 闭环 imagined rollout 多个 chunk 后如何控制视觉误差累积和状态漂移？
+- 被评估 VLA 是否会利用或放大 PiL-World 的生成伪影，导致评估偏乐观？
 
 #### 📌 上传 PDF 后优先看
 
-- world model 架构与训练损失章节
-- policy-in-the-loop rollout 协议与接口定义
-- 真实双臂任务上的评估相关性和开放环 baseline 对比
+- world model 输入输出接口与 chunk-wise rollout 流程章节
+- 真实 dual-arm manipulation task 设置与 VLA baseline 章节
+- imagined evaluation 与真实机器人评估相关性的实验或表格
 
 ### [3]. World-Language-Action Model for Unified World Modeling, Language Reasoning, and Action Synthesis [[HTML]](https://arxiv.org/html/2606.05979) [[PDF]](https://arxiv.org/pdf/2606.05979) [[ChatGPT]](https://chatgpt.com/)
 * **Paper ID**: `2606.05979`
 * **Authors**: Yi Yang, Zhihong Liu, Siqi Kou, Yiyang Chen, Yanzhe Hu, Jianbo Zhou, Boyuan Zhao, Zhijie Wei, Xiao Xia, Xueqi Li, Pengfei Liu, Zhijie Deng
 * **Author Priority**: Standard
-* **一句话结论**: 值得优先看，因为 WLA 试图把 world modeling、language reasoning 和 action synthesis 合成一个 embodied foundation model 接口。
-* **关键词**: `world-language-action` `WAM` `VLA` `autoregressive transformer` `test-time scaling`
+* **一句话结论**: 值得优先看，因为 WLA 把 world modeling、language reasoning 和 action synthesis 放进同一个自回归框架，是今天最接近“新一代 embodied foundation model”叙事的论文。
+* **关键词**: `World-Language-Action` `WAM` `VLA` `autoregressive Transformer` `test-time scaling`
 * **证据来源**: arXiv HTML (Introduction, Method, Experiments, Conclusion)
 
 #### 📖 背景与动机
 
-WLA 的出发点是当前 WAM 与 VLA 各有短板。WAM 通过预测未来视觉状态学习物理动态，能从大规模 egocentric videos 中受益，并为动作预测提供未来状态先验；但如果只预测低层视觉细节，模型会被像素级变化牵制，语义推理和长程外推能力不足。VLA 则擅长语言指令和任务语义，但很多方法仍直接把观察与语言映射到动作，世界动态建模不够显式。论文提出的关键判断是，机器人的“下一状态”不应只是图像，也应包含高层 textual intention 或 subtask 表征。这样，语义层能提供紧凑、可泛化的规划线索，物理层提供细粒度动态约束，两者共同服务动作生成。这个问题对长程任务尤其重要，因为长程控制既需要知道下一步应该做什么，也需要知道物体和机器人状态会怎么变。
+现有 WAM 借助世界建模接口从 egocentric video 中学习物理动态，但很多方法主要预测下一视觉状态，容易被低层视觉细节牵制；VLA 具备语言推理和指令跟随能力，却未必显式建模未来状态。WLA 的动机是把二者合并：下一状态不只包含图像或 latent physical dynamics，也包含高层 textual intention。这个问题对长时程机器人任务尤其关键，因为策略既要理解子任务语义，又要预测动作对世界的影响。WLA 因此不是单纯加一个视频预测头，而是试图把语义计划、subgoal image 和 low-level action 统一到 embodied foundation model 内。
 
 #### ⚙️ 核心方法
 
-WLA 被定义为 world-language-action model，输入 textual instructions、images 和 robot states，联合预测 textual subtasks、subgoal images 和 robot actions。核心是 autoregressive Transformer backbone，而不是 WAM 中常见的 bidirectional diffusion Transformer。模型把下一状态拆成两类互补输出：语义层的 textual intention，以及细粒度 physical dynamics。实现上，WLA-0 使用 RynnBrain-2B 作为 backbone，SANA-600M 作为 World Expert，flow-matching head 作为 Action Expert，总参数量 3.4B；每个 expert 有 28 层，meta-queries 数量为 64。World Expert 通过 world modeling objective 监督物理动态，Action Expert 利用这些动态先验降低 state-action correlation 的建模难度。meta-queries 是重要接口：它们让 world prediction 隐式影响 action generation，因此推理时可以关闭显式 world prediction 以维持效率，也可以在测试时打开 world prediction 做 test-time scaling。相对已有 VLA/WAM，新意在于不是把语言推理和世界预测作为两个外部模块串联，而是在同一 AR embodied backbone 中共同训练并通过 meta-query 影响动作头。
+WLA 采用 autoregressive Transformer backbone，而不是 WAM 中常见的 bidirectional diffusion Transformer，输入文本指令、图像和机器人状态，联合预测 textual subtasks、subgoal images 与 robot actions。摘录明确给出 WLA-0 的组成：RynnBrain-2B 作为 2.1B backbone，SANA-600M 作为 World Expert，flow-matching head 作为 390M Action Expert，总参数约 3.4B；每个 expert 有 28 层。World Expert 通过 world modeling objective 监督 fine-grained physical dynamics，Action Expert 负责动作生成。关键新意是 meta-queries：它们让 world prediction 隐式影响 action generation，因此推理时可以关闭显式 world prediction 以保持实时控制，也可以开启 world prediction 做 test-time scaling。也就是说，WLA 不把世界建模只当辅助可视化，而是把它变成动作头的条件化机制。当前摘录能确认模块角色，但具体 token 格式、loss Eq. 3.5 和 meta-query 交互方式仍需核查。
 
 #### 📊 实验与结果
 
-摘录给出较多实现和部分实验设置信息。WLA-0 在 LIBERO 上 action chunk size 为 8，在其他设置中为 32。RoboTwin 2.0 是包含 50 个任务的双臂 manipulation benchmark，作者按既有多任务训练协议，用 2,500 条 clean-scene trajectories 和 25,000 条 strongly randomized trajectories 混合训练 100k steps。摘录还提到 memory 相关 benchmark 和 real-time robot control，但具体表格数字没有完整呈现。结论声称 WLA-0 在多任务表现、memory benchmark 和长程推理/实时控制上取得强结果或 state-of-the-art 结果。能明确引用的证据主要是模型规模、组件配置、训练数据规模和 benchmark 类型；关于成功率提升幅度、SOTA 差距和真实机器人任务细节，需要 PDF 中表格和消融进一步核查。
+摘录提供了较多实现和 benchmark 线索。WLA-0 在 RoboTwin 2.0 上评估，该 benchmark 包含 50 个需要双臂协调的任务；作者按既有 multi-task protocol，用 2,500 条 clean-scene trajectories 和 25,000 条 strongly randomized trajectories 训练 100k steps。LIBERO 上 action chunk size 为 8，其他设置为 32；训练使用 DeepSpeed 和 AdamW。结论声称 WLA-0 在 memory 相关任务和多任务性能上达到强结果，并支持 long-horizon reasoning 与 real-time robot control。但摘录没有完整列出成功率、SOTA 对比数值和真实机器人设置，因此不能判断领先幅度。
 
 #### ⚠️ 风险 / 保留意见
 
-- 3.4B 参数与多 expert 结构复现成本高，训练数据、算力和工程细节都会影响结论可迁移性。
-- world prediction 推理时可关闭这一点很有吸引力，但其对动作提升的因果贡献需要强消融支持。
-- 摘要级证据显示统一建模很强，但不同 benchmark 的数据配比和任务难度可能掩盖模块真实贡献。
+- 模型规模和专家模块复杂，复现成本明显高于轻量 VLA fine-tuning。
+- World Expert 对 action 的真实贡献依赖 meta-query ablation，摘录中尚无完整证据。
+- 自回归统一建模可能在实时控制中受延迟和长序列建模成本限制。
 
 #### 💭 结论与启发
 
-这篇值得作为“下一代 VLA 接口设计”的参考：动作头前不只是塞更多视觉语言 token，而是让模型同时学习 subtask、subgoal image 和 action，并用 meta-query 把世界预测转成动作条件。后续选题可以围绕两个问题展开：一是世界预测是否必须生成可视化图像，还是只需要 latent dynamics；二是 test-time scaling 在机器人控制中应当花在语言计划、世界 rollout 还是动作假设上。复现时应先做小模型版本，验证 meta-query 与 world loss 对 action success 的边际收益。
+WLA 最重要的启发是：world model 可以从“预测未来图像”升级为“为动作生成提供可开关的语义与物理状态先验”。后续如果做系统设计，可以考虑把 subtask text、subgoal image、action chunk 作为统一训练目标，而不是只做 action supervision。阅读时应警惕大模型组合带来的 attribution 问题，优先看 meta-query、World Expert 和 Action Expert 的消融是否足以支撑统一框架主张。
 
 #### 🔎 读 PDF 先核查
 
-- meta-queries 如何把 World Expert 的预测信息传递给 Action Expert，是否有显式 cross-attention 或共享 latent 接口？
-- 推理时关闭 world prediction 后，动作性能相比开启 world prediction 和完全移除 world loss 分别如何变化？
-- WLA-0 在 RoboTwin、LIBERO 和 memory benchmark 上的提升是否来自语义 subtask 预测、subgoal image 预测，还是更大的 backbone 容量？
+- meta-queries 如何把 World Expert 的预测信息传递给 Action Expert，是否有可解释的中间表示？
+- 关闭 world prediction 推理时，动作性能与开启 test-time scaling 时的差距有多大？
+- WLA 的提升来自 world modeling objective，还是主要来自更大的 backbone 和专家容量？
 
 #### 📌 上传 PDF 后优先看
 
-- WLA 架构图与 meta-query 机制章节
-- world / language / action 多任务损失和推理开关消融
-- RoboTwin 2.0、LIBERO、memory benchmark 的表格与 ablation
+- WLA architecture、World Expert、Action Expert 与 meta-query 章节
+- RoboTwin 2.0、LIBERO 和 memory task 的主结果表
+- 关闭/开启 world prediction 与 expert ablation 的实验章节
 
-### [4]. AffordanceVLA: A Vision-Language-Action Model Empowering Action Generation through Affordance-Aware Understanding [[HTML]](https://arxiv.org/html/2606.06155) [[PDF]](https://arxiv.org/pdf/2606.06155) [[ChatGPT]](https://chatgpt.com/)
-* **Paper ID**: `2606.06155`
-* **Authors**: Qize Yu, Jiadi You, Yuran Wang, Jiaqi Liang, Bowen Ping, Yang Tian, Yue Chen, Minghong Cai, Zeying Gong, Ruihai Wu, Yinchuan Li, Junwei Liang, Yingcong Chen
-* **Author Priority**: Standard
-* **一句话结论**: 值得优先看，因为 AffordanceVLA 用 which/where/how affordance 中间表征缓解 VLM 语义空间到机器人动作空间的错配。
-* **关键词**: `affordance forecasting` `VLA` `Mixture-of-Transformer` `2D/3D grounding` `manipulation policy`
-* **证据来源**: arXiv HTML (Introduction, Method, Experiments, Conclusion)
-
-#### 📖 背景与动机
-
-这篇的动机非常典型但重要：VLA 常借助 pretrained VLM 的世界知识来做 instruction-following manipulation，但 VLM 的预训练目标主要是视觉-语言语义对齐，而机器人动作存在于 3D 物理空间。直接从自然语言和图像端到端预测动作，容易让模型知道“是什么”，却不知道“该接触哪里、如何接触、以什么几何方式执行”。已有路线包括视频预测、轨迹预测或直接 policy learning，但中间表示如果不够 task-oriented，就难以稳定桥接 perception 与 action。AffordanceVLA 的核心判断是，affordance forecasting 可以作为更精确的中间接口：先定位与任务相关的对象和交互区域，再进行 3D 几何推理，最后指导动作生成。对 VLA 来说，这相当于把语义理解拆成可执行的 manipulation prior。
-
-#### ⚙️ 核心方法
-
-AffordanceVLA 引入 structured affordance forecasting，逐步建模三类互补先验：Which2Act 用 object-centric grounding 和 visual latent prediction 抑制视觉干扰；Where2Act 估计 2D affordance map，给出交互位置；How2Act 做 3D geometric reasoning，用于指导 manipulation policy。摘录显示这些 affordance cues 是 spatially grounded、semantically conditioned 且 action-coupled 的中间表示。架构上，实验问题提到 Mixture-of-Transformer 设计，包含 Understanding、Affordance Generation 和 Action experts，目标是避免 unified network structures 中的 representation collapse。训练范式是 three-stage progressive training，用来从广义视觉语言预训练逐步过渡到任务相关 embodied control。当前摘录能确认上述模块和训练设计，但没有提供每个 expert 的精确网络结构、affordance supervision 来源、2D/3D 标签构造方式或动作头细节。因此方法解读应保守：它的核心贡献是把 VLA 的感知-动作映射拆成 which/where/how 三个 affordance 子问题，并用专门 expert 维护这些表征，而不是假设单一 VLM latent 可以自动对齐控制空间。
-
-#### 📊 实验与结果
-
-实验覆盖 simulation benchmarks 和 real-world tasks。摘录明确提到在 LIBERO 与 CALVIN 上比较大量 baseline，并报告两个模型变体，以隔离架构和训练范式贡献。实验问题围绕三点：structured affordance forecasting 是否是有效中间表示，MoT 的解耦 expert 是否避免 representation collapse，三阶段 progressive training 是否帮助弥合 VLM 预训练与 embodied control 的差距。结论片段还给出一个定性 failure mode：在 Toaster 任务中，Pi0 的失败集中于 button-pressing step，常把“按按钮”误执行成夹爪闭合式 pick-and-place，说明 instruction following 和动作 affordance 对齐不足。摘录中的数值占位不完整，因此不能引用具体成功率，只能说明作者用仿真与真实任务、baseline、变体和失败案例来支撑主张。
-
-#### ⚠️ 风险 / 保留意见
-
-- affordance 标签或伪标签的来源若成本高，会限制规模化复现。
-- which/where/how 分解对接触型 manipulation 很自然，但对非刚体、工具使用或双臂协调的充分性需要验证。
-- MoT 和三阶段训练引入较多组件，真实收益需要看严格 ablation，而不能只看最终模型胜出。
-
-#### 💭 结论与启发
-
-这篇对系统设计的启发是，不要把 VLA 的所有能力都压进一个动作 decoder；对精细操作，显式 affordance 中间层可能比更大 backbone 更有效。后续复现可以从最小版本开始：保留原 VLA action head，只加入 2D affordance map 或 object-centric latent，观察是否能减少“语义理解正确但接触动作错误”的失败。读 PDF 时应特别关注 affordance supervision 是否可自动生成，因为这决定了方法是工程上可扩展，还是主要依赖昂贵标注。
-
-#### 🔎 读 PDF 先核查
-
-- Which2Act、Where2Act、How2Act 的监督信号分别来自人工标注、仿真标签、轨迹反推还是模型伪标签？
-- MoT 的 Understanding、Affordance Generation、Action experts 如何通信，是否存在共享 token 或 gating 机制？
-- Toaster/button-pressing 这类 failure mode 的改善是否能由 affordance map 直接解释，还是来自整体模型容量增加？
-
-#### 📌 上传 PDF 后优先看
-
-- which/where/how affordance 表征定义与标签构造章节
-- MoT 架构和 representation collapse 消融
-- LIBERO、CALVIN 与真实任务 failure mode 对比
-
-### [5]. MPCoT: Reward-Guided Multi-Path Latent Reasoning for Test-Time Scalable Vision-Language-Action [[HTML]](https://arxiv.org/html/2606.06245) [[PDF]](https://arxiv.org/pdf/2606.06245) [[ChatGPT]](https://chatgpt.com/)
+### [4]. MPCoT: Reward-Guided Multi-Path Latent Reasoning for Test-Time Scalable Vision-Language-Action [[HTML]](https://arxiv.org/html/2606.06245) [[PDF]](https://arxiv.org/pdf/2606.06245) [[ChatGPT]](https://chatgpt.com/)
 * **Paper ID**: `2606.06245`
 * **Authors**: Boyang Zhang, Lianlei Shan
 * **Author Priority**: Standard
-* **一句话结论**: 值得优先看，因为 MPCoT 把 VLA 的测试时计算做成 latent multi-path refinement，而不是生成显式 CoT token。
-* **关键词**: `latent reasoning` `test-time scaling` `OpenVLA-OFT` `path preference` `CALVIN`
+* **一句话结论**: 值得优先看，因为 MPCoT 给 VLA 引入零显式 token 的测试时 latent reasoning，直接回应长时程控制中 one-pass decoder 的脆弱性。
+* **关键词**: `latent reasoning` `test-time scaling` `VLA` `OpenVLA-OFT` `path preference`
 * **证据来源**: arXiv HTML (Introduction, Method, Experiments, Conclusion)
 
 #### 📖 背景与动机
 
-MPCoT 关注 VLA 在长程和高不确定性控制中的脆弱性。传统 one-pass action decoding 很高效，但面对组合指令、连续子任务和早期误差累积时，策略缺少推理时 deliberation。显式 chain-of-thought 可以增加推理深度，但在机器人控制中会带来 token latency、内存开销，以及文本 rationale 到连续动作之间的间接接口。论文的动机是寻找一种更贴近控制的测试时 scaling：让模型在连续 latent space 中初始化多条假设、迭代细化、评分聚合，再输出动作 chunk。这样既保留原始 action interface，又避免输出解释性 token。对 VLA/RL 结合方向来说，它把 reward-guided training 和 reward-free inference 连接起来，试图用训练期奖励监督换取测试期轻量选择能力。
+长时程 VLA 控制的难点在于早期小错误会沿 action chunk 累积，而标准 one-pass action decoder 几乎没有推理时修正空间。显式 chain-of-thought 可以增加推理深度，但文本或视觉 rationale 会带来延迟、显存开销，并且到连续动作之间仍隔着间接接口。MPCoT 的价值在于把“多路径思考”搬到连续 latent space：不生成 reasoning token，而是在动作解码前生成、细化、选择多个 latent hypothesis。它关注的是 inference-time compute 如何真正帮助 VLA 控制，而不是只在语言层面增加解释。
 
 #### ⚙️ 核心方法
 
-MPCoT 被插入 OpenVLA-OFT，在每个 control step 中先初始化多个 latent hypotheses，再用共享权重的 refinement steps 对这些分支进行迭代更新，随后根据 confidence-aware soft weights 聚合分支，最后交给同一个 action decoder 输出动作。论文强调它不是 multi-policy ensemble，也不是 inference-time search，而是在单一 policy head 前加入轻量 latent reasoning module。训练期，candidate branches 会接受 path-preference supervision，奖励来源包括 expert-action consistency、world-model/VLM-based progress 和 success feedback 等；这些信号训练 scorer，使推理期无需再访问 reward。接口上，MPCoT 保持 OpenVLA-OFT 的 8-step action interface 不变，显式把提升归因到 action head 前的 latent reasoning。它还支持通过增加 latent refinement depth 和 hypothesis width 来扩展测试时计算。摘录没有给出 scorer 的精确公式、world-model/VLM progress 的实现或 reward 归一化细节，因此这些应作为 PDF 核查重点。
+MPCoT 插入 OpenVLA-OFT，在不改变原 8-step action interface 的前提下，于 policy decoder 之前加入 latent reasoning module。每个 control step 中，模型先初始化多个 latent hypotheses，再用权重共享的 refinement steps 迭代细化，最后通过 confidence-aware soft weights 聚合 refined branches，再交给同一个 action head 解码。作者强调它不是多策略 ensemble，也不是 inference-time search，而是单一 policy head 上的轻量 latent refinement。训练阶段有 path-preference objective，对候选 action branch 用 expert-action consistency、world-model/VLM-based progress 和 success feedback 等信号进行评价，从而监督 scorer；推理阶段则不需要 reward feedback。摘录还说明 depth/width ablation 改变 latent steps 和 hypotheses，而不改变 backbone、decoder、action horizon、splits 或 observations。核心新意是把测试时扩展从显式 CoT 转化为可控的 latent depth/width。
 
 #### 📊 实验与结果
 
-实验使用 OpenVLA-OFT 官方 evaluation code 和 splits。主结果固定 inference 设置；depth/width ablation 只改变 latent steps 和 hypotheses，不改变 backbone、decoder、action horizon、splits 或 observations。LIBERO 被定位为 near-ceiling compatibility benchmark，CALVIN ABCD 和机制消融是检验 sequential robustness、depth/width scaling 与 reward-guided path supervision 的主要证据。指标上，LIBERO 报告 suite-level 和 average success rates；CALVIN ABCD 报告 1-5 step success rate 和 average successful sequence length，用于反映长程指令链中的误差累积。论文还用 Path Consistency 衡量 scorer-preferred path 与 highest-return path 的一致性。结论声称在 LIBERO 和 CALVIN 上优于强 baseline，并且消融支持 depth/width scaling、soft aggregation 与 reward-guided supervision 的作用；摘录未提供具体数值，因此不能陈述提升幅度。
+实验使用 OpenVLA-OFT 官方 evaluation code 和 splits。LIBERO 被定位为 near-ceiling compatibility benchmark，CALVIN ABC D 与机制消融则作为 sequential robustness、depth/width scaling 和 reward-guided path supervision 的主要证据。LIBERO 报告 suite-level 与 average success rate；CALVIN 报告 1-5 step success rate 和 average successful sequence length，以反映长指令链中的误差累积。摘录说明主结果固定 inference 设置，其他 depth/width 进入消融；结论声称在 LIBERO 和 CALVIN 上相对强 baseline 改善长时程表现。但具体 SR 数值、延迟数值和 baseline 列表未完整给出，需保守看待。
 
 #### ⚠️ 风险 / 保留意见
 
-- 训练期 path reward 依赖 expert consistency、world-model/VLM progress 和 success feedback，其可靠性会直接影响 scorer。
-- 测试时增加 depth/width 会带来 latency，是否适合真实机器人闭环频率需看完整延迟表。
-- 目前证据主要来自 LIBERO 与 CALVIN，真实机器人部署和分布外任务仍是缺口。
+- 训练时 path preference 依赖 world-model/VLM progress 和 success feedback，信号质量会影响 scorer。
+- latent 多路径推理增加推理延迟，实际机器人频率需要核查完整 latency 表。
+- 如果 benchmark 接近 ceiling，LIBERO 提升可能不足以证明复杂长时程泛化。
 
 #### 💭 结论与启发
 
-这篇提供了一个很实用的 VLA test-time scaling 模板：不用让机器人策略说出 CoT，而是在动作头前做多假设 latent 推理。后续如果做 OpenVLA/OFT 系统，可以把 MPCoT 当作可插拔模块评估，重点看同一 action head 下是否能用少量额外计算提升长程稳定性。更重要的是，它提示 reward 不一定要在推理时在线搜索使用，也可以在训练期教会一个路径 scorer，再让策略在部署时做快速 latent aggregation。
+MPCoT 对后续工作最大的启发是：测试时计算可以不通过语言 token，而直接作用在动作前的 latent hypothesis 上。做 VLA 系统时，这类模块适合作为可插拔的风险控制层，用于高不确定状态或长时程子任务；但它是否值得部署，取决于 CALVIN 长链收益与延迟开销的平衡。阅读 PDF 时应重点看 path scorer 的监督质量和 depth/width scaling 是否稳定。
 
 #### 🔎 读 PDF 先核查
 
-- 训练期 path-preference objective 中 expert consistency、world-model/VLM progress 和 success feedback 的权重如何设定？
-- depth 和 width 增加时，成功率提升与推理延迟之间的拐点在哪里？
-- Path Consistency 与实际 long-horizon success 是否强相关，还是只解释部分机制？
+- path scorer 在推理时没有 reward feedback，如何避免训练阶段偏好信号与测试状态分布错配？
+- latent depth 和 hypothesis width 的收益是否单调，还是很快达到延迟/性能拐点？
+- MPCoT 的 soft aggregation 是否会平均掉互斥动作分支，导致接触任务中动作不锐利？
 
 #### 📌 上传 PDF 后优先看
 
-- MPCoT latent hypothesis refinement 与 scorer 训练章节
-- LIBERO/CALVIN 主结果和 depth-width ablation
-- 延迟、path consistency、soft aggregation 的机制消融
+- MPCoT latent hypothesis 初始化、refinement 与 aggregation 章节
+- path-preference objective 和 reward/progress 信号定义章节
+- CALVIN 长链、depth/width scaling 与 latency ablation 表
 
-## Watchlist
-
-### [W1]. TempoVLA: Learning Speed-Controllable Vision-Language-Action Policies [[HTML]](https://arxiv.org/html/2606.06491) [[PDF]](https://arxiv.org/pdf/2606.06491)
+### [5]. TempoVLA: Learning Speed-Controllable Vision-Language-Action Policies [[HTML]](https://arxiv.org/html/2606.06491) [[PDF]](https://arxiv.org/pdf/2606.06491) [[ChatGPT]](https://chatgpt.com/)
 * **Paper ID**: `2606.06491`
 * **Authors**: Dong Jing, Jingchen Nie, Tianqi Zhang, Jiaqi Liu, Huaxiu Yao, Zhiwu Lu, Mingyu Ding
 * **Author Priority**: Standard
-* **为什么还值得留意**: TempoVLA 进入 watchlist 是因为速度可控 VLA 很贴近真实部署：低风险 transit 需要快，高风险 contact 需要慢，而现有 VLA 通常继承示范数据的固定速度。它没有进入最终精选，主要是因为相对今天的 reward-free 后训练、闭环 world model 和统一 WLA，议题更偏执行控制层与数据增强；需要看 PDF 确认真实世界动态速度控制和高速度饱和边界。
+* **一句话结论**: 值得优先看，因为 TempoVLA 把执行速度从训练数据的隐含属性变成可控条件，是 VLA 部署中少见但很实用的问题。
+* **关键词**: `speed-controllable VLA` `trajectory augmentation` `LIBERO` `flow matching` `dynamic speed control`
 * **证据来源**: arXiv HTML (Introduction, Experiments, Conclusion)
 
-### [W2]. Flash-WAM: Modality-Aware Distillation for World Action Models [[HTML]](https://arxiv.org/html/2606.05254) [[PDF]](https://arxiv.org/pdf/2606.05254)
+#### 📖 背景与动机
+
+机器人操作并不应该以单一速度运行：空中移动和低风险 transit 可以快，接触、插入、按压等阶段则需要慢和稳。现有 VLA 通常继承 demonstrations 的固定速度，模型压缩、KV-cache 或 RL 加速也多是把策略从一个固定速度推到另一个固定速度，很少支持同一策略内的双向速度控制。TempoVLA 的动机很直接：预测动作的幅值本身决定机器人运动快慢，因此可以通过数据和条件机制让模型学习目标速度。对真实部署来说，这比单纯提升推理 FPS 更接近安全、效率和精度之间的动态权衡。
+
+#### ⚙️ 核心方法
+
+摘录能确认 TempoVLA 由数据侧 Variable-Speed Trajectory Augmentation 与轻量模型侧 conditioning 组成。VSTA 的关键思路是利用动作在平移和旋转增量空间中的线性可组合性，对轨迹做 accumulate-then-split，从而生成不同目标速度下仍可执行的 demonstrations；gripper 信号则离散处理。模型侧将 target speed 作为条件输入，默认用 textual prefix 注入，让单个 VLA 在推理时根据指定速度输出对应幅值的 action。实验基于一个 flow-matching VLA，该模型建立在 PaliGemma 之上并预训练于大规模 embodied datasets。摘录还提到可通过外部 VLM 实现 dynamic speed control，即根据场景阶段选择速度。当前摘录不足以确认完整速度档位、VSTA 数学定义和速度条件是否也可用非文本 token 表示，这些需要 PDF 复核。
+
+#### 📊 实验与结果
+
+仿真实验使用 LIBERO 四个 manipulation suites：Spatial、Object、Goal、Long；每个 suite 含 10 个任务和 500 条人类遥操作 demonstrations。作者指出 LIBERO demonstrations 平滑且没有剧烈速度变化，因此适合作为速度控制测试床。动作是 end-effector command，包含 translation、axis-angle rotation increment 和 gripper signal。训练设置包括 30k iterations、batch size 512、32 张 NVIDIA H20 GPU、固定随机种子。结论称 TempoVLA 支持双向速度控制、提升默认性能，并在真实世界实验中展示动态速度控制；但摘录没有给出具体成功率、速度误差或真实任务数量，不能展开数值比较。
+
+#### ⚠️ 风险 / 保留意见
+
+- 高速端会出现速度提升饱和，摘录暗示 per-step target 超过固定限制后效果受限。
+- 速度控制依赖动作幅值可组合假设，接触密集或非线性动力学阶段可能不完全成立。
+- 动态速度若由外部 VLM 决策，错误阶段判断可能带来安全风险。
+
+#### 💭 结论与启发
+
+TempoVLA 提醒我们，VLA 部署指标不应只看成功率，还要看速度、接触阶段节奏和用户可控性。复现时可以从数据增强入手，不必先改大模型结构；系统设计上，可以把速度作为 instruction 之外的独立控制旋钮，用于任务阶段调度。后续阅读重点应放在 VSTA 生成轨迹是否真的保持可执行，以及速度控制是否牺牲精度和稳定性。
+
+#### 🔎 读 PDF 先核查
+
+- VSTA 在高风险接触阶段是否会破坏原 demonstration 的时序和接触稳定性？
+- target speed textual prefix 是否足够稳定，还是需要显式数值 token 或 controller-side constraint？
+- 默认性能提升来自速度增强带来的数据正则化，还是来自推理时速度选择本身？
+
+#### 📌 上传 PDF 后优先看
+
+- Variable-Speed Trajectory Augmentation 的算法与可执行性验证章节
+- LIBERO 四套任务上的速度档位、成功率和速度误差表
+- 真实世界动态速度控制与外部 VLM 阶段判断实验
+
+### [6]. Flash-WAM: Modality-Aware Distillation for World Action Models [[HTML]](https://arxiv.org/html/2606.05254) [[PDF]](https://arxiv.org/pdf/2606.05254) [[ChatGPT]](https://chatgpt.com/)
 * **Paper ID**: `2606.05254`
 * **Authors**: Arman Akbari, Ci Zhang, Arash Akbari, Lin Zhao, Yixiao Chen, Weiwei Chen, Xuan Zhang, Geng Yuan, Yanzhi Wang
 * **Author Priority**: Standard
-* **为什么还值得留意**: Flash-WAM 值得跟踪，因为 WAM 的多步 diffusion 推理成本确实阻碍实时控制，modality-aware distillation 针对 joint video-action streams 的噪声日程不对称提出了专门解法。它未进最终精选，是因为它更像 WAM 推理加速与蒸馏工程突破，而不是今天最核心的 VLA 后训练、闭环评估或动作推理框架；摘录中的部分速度和成功率数字缺失，也需要 PDF 核查。
+* **一句话结论**: 值得优先看，因为 Flash-WAM 直击 WAM 的实时控制瓶颈，并指出 joint video-action diffusion 不能直接套用单模态 step distillation。
+* **关键词**: `World Action Model` `step distillation` `modality-aware diffusion` `real-time control` `LingBot-VA`
 * **证据来源**: arXiv HTML (Introduction, Experiments, Conclusion)
 
-### [W3]. VISTA: Vision-Grounded and Physics-Validated Adaptation of UMI data for VLA Training [[HTML]](https://arxiv.org/html/2606.04708) [[PDF]](https://arxiv.org/pdf/2606.04708)
-* **Paper ID**: `2606.04708`
-* **Authors**: Siyuan Yang, Linzheng Guo, Ouyang Lu, Zhaxizhuoma, Daoran Zhang, Xinmiao Wang, Ting Xiao, Fangzheng Yan, Zhijun Chen, Yan Ding, Chao Yu, Chenjia Bai, Xuelong Li
+#### 📖 背景与动机
+
+WAM 通过联合生成未来视频和机器人动作来建模物理动态，理论上比直接 VLA 更具未来状态先验，但 iterative diffusion 往往需要多步 denoising，难以满足实时控制。Step distillation 是自然方向，可是在 joint video-action setting 中，视频流和动作流的噪声调度、SNR shift 和边缘噪声分布并不一致。Flash-WAM 的重要性在于它没有把 WAM 加速看成普通 diffusion 压缩问题，而是识别出多模态蒸馏的结构性失败模式。对部署来说，能否把 WAM 压到实时 chunk-level latency，决定它是否能从评估/生成工具进入控制回路。
+
+#### ⚙️ 核心方法
+
+Flash-WAM 是 modality-aware step-distillation framework，服务对象是联合 video-action diffusion WAM。摘录指出 off-the-shelf consistency distillation 在这里会失败，因为 video 和 action stream 使用不同 SNR-shifted noise schedules，并在 distillation loss 处处于不同噪声 regime；一个单一 consistency function 很难同时适配两种模态。Flash-WAM 的解决方案是为不同模态选择 consistency-function family 中不同成员，使其匹配各自噪声 regime。实验实例化在 released LingBot-VA shared-backbone model 上，作者选择它是因为开源、WAM 性能强，且参数规模适合 commodity edge deployment。当前摘录没有给出完整蒸馏损失、teacher-student schedule、每模态函数族具体形式或 action/video 权重设置，因此只能确认“模态感知一致性蒸馏”这一主线。
+
+#### 📊 实验与结果
+
+实验设置覆盖两个仿真 benchmark 和一个真实机器人 setup。RoboTwin 2.0 是双臂操作 benchmark，包含 Clean split 和 Randomized split；LIBERO 也用于评估。延迟在单张 NVIDIA L40S GPU 上测量，作者采用一个 chunk-level 实时预算作为参考，但摘录中的具体毫秒数被截断，不能引用。结论声称 Flash-WAM 在 LingBot-VA 上接近恢复原模型任务成功率，并在更少 denoising step 下达到实时 per-chunk latency；同时提到 RoboTwin 2.0、LIBERO 和真实世界结果。由于摘录里的成功率和 speedup 数值缺失，不能判断压缩幅度与性能损失的具体权衡。
+
+#### ⚠️ 风险 / 保留意见
+
+- 方法依赖 video/action 噪声调度差异诊断，换到其他 WAM 架构需重新验证。
+- 摘录未给出完整数值，实时性和成功率损失需要 PDF 表格确认。
+- 只在 LingBot-VA 上实例化，Motus、DreamZero 等不同架构是否适用仍是开放问题。
+
+#### 💭 结论与启发
+
+Flash-WAM 对我最大的启发是：WAM 实时化不能只照搬图像 diffusion 的蒸馏经验，动作流的噪声性质和控制误差会改变压缩策略。后续如果要做 WAM 部署，应把 video quality、action success 和 latency 分开评估，并检查每个模态的蒸馏目标。它也适合作为读 WAM 论文时的工程标尺：强 world-action model 如果不能低延迟运行，实际控制价值会大打折扣。
+
+#### 🔎 读 PDF 先核查
+
+- Flash-WAM 为 video/action 选择不同 consistency function 的准则是否可迁移到其他 WAM？
+- 蒸馏后 action success 的下降与 video prediction quality 的下降是否同步，还是存在模态不一致？
+- 单步或少步 denoising 达到实时后，在真实机器人闭环中是否会积累控制误差？
+
+#### 📌 上传 PDF 后优先看
+
+- modality-aware consistency distillation 的失效分析和公式章节
+- RoboTwin 2.0、LIBERO 上成功率与 denoising step/latency 权衡表
+- 真实机器人 setup 与蒸馏后闭环控制稳定性实验
+
+## Watchlist
+
+### [W1]. Discrete-WAM: Unified Discrete Vision-Action Token Editing for World-Policy Learning [[HTML]](https://arxiv.org/html/2606.05645) [[PDF]](https://arxiv.org/pdf/2606.05645)
+* **Paper ID**: `2606.05645`
+* **Authors**: Ziyang Yao, Haochen Liu, Yuncheng Jiang, Zeyu Zhu, Zibin Guo, Jingru Wang, Tianle Liu, Jianwei Cui, Kuiyuan Yang, Hongwei Xie, Jingwei Zhao, Guang Chen, Hangjun Ye
 * **Author Priority**: Standard
-* **为什么还值得留意**: VISTA 进入 watchlist 是因为 UMI 数据到 VLA 训练之间的两个 mismatch 很关键：fisheye wrist view 对 VLM 不友好，human-collected trajectory 也可能物理不可执行。它没有进入最终精选，是因为它主要是数据适配与验证框架，和今天最终五篇相比，对 VLA policy 内部推理、world model 或后训练目标的直接方法贡献稍弱。
+* **为什么还值得留意**: Discrete-WAM 进入 shortlist 是因为它把未来视觉状态和 ego action 都离散 token 化，用统一 token-editing 范式处理 driving world-policy learning，和今天的 WAM/World Action Model 主线高度相关。它没有进入最终精选，主要因为场景是 autonomous driving 而非机器人操作，且方法重心偏离 VLA manipulation；但其 counterfactual future 与离散视觉-动作 token 接口值得后续横向参考。
 * **证据来源**: arXiv HTML (Introduction, Method, Experiments, Conclusion)
 
-### [W4]. LadderMan: Learning Humanoid Perceptive Ladder Climbing [[VIP]] [[HTML]](https://arxiv.org/html/2606.05873) [[PDF]](https://arxiv.org/pdf/2606.05873)
+### [W2]. LadderMan: Learning Humanoid Perceptive Ladder Climbing [[VIP]] [[HTML]](https://arxiv.org/html/2606.05873) [[PDF]](https://arxiv.org/pdf/2606.05873)
 * **Paper ID**: `2606.05873`
 * **Authors**: Siheng Zhao, Yuanhang Zhang, Ziqi Lu, Pieter Abbeel, Rocky Duan, Koushil Sreenath, Yue Wang, C. Karen Liu, Guanya Shi
 * **Author Priority**: Core VIP
-* **为什么还值得留意**: LadderMan 因 Pieter Abbeel 与 Yue Wang 进入 VIP 优先跟踪，同时其 humanoid ladder climbing 涉及 whole-body coordination、vision foundation model sim2real 和真实 Unitree G1 部署，工程价值很高。它没有进入最终精选，是因为主题更偏 humanoid locomotion/manipulation 系统，而不是 VLA、world action model 或 VLA+RL 的主线。
+* **为什么还值得留意**: LadderMan 值得跟踪，因为它有 Pieter Abbeel 与 Yue Wang，且问题是高难度 humanoid perceptive ladder climbing，包含 hybrid imitation/RL、vision foundation model bridging sim-to-real、真实 Unitree G1 部署等强机器人信号。没有进入最终精选，是因为它更偏 humanoid locomotion/whole-body manipulation 系统论文，而非今天 VLA/WAM 主线；但 Sim2Real 和全身接触控制价值很高。
 * **证据来源**: arXiv HTML (Introduction, Method, Experiments, Conclusion)
 
-### [W5]. Open-H-Embodiment: A Large-Scale Dataset for Enabling Foundation Models in Medical Robotics [[VIP]] [[HTML]](https://arxiv.org/html/2604.21017) [[PDF]](https://arxiv.org/pdf/2604.21017)
-* **Paper ID**: `2604.21017`
-* **Authors**: Open-H-Embodiment Consortium: Nigel Nelson, Juo-Tung Chen, Jesse Haworth, Xinhao Chen, Lukas Zbinden, Dianye Huang, Alaa Eldin Abdelaal, Alberto Arezzo, Ayberk Acar, Farshid Alambeigi, Carlo Alberto Ammirati, Yunke Ao, Pablo David Aranda Rodriguez, Soofiyan Atar, Mattia Ballo, Noah Barnes, Federica Barontini, Filip Binkiewicz, Peter Black, Sebastian Bodenstedt, Leonardo Borgioli, Nikola Budjak, Benjamin Calmé, Fabio Carrillo, Nicola Cavalcanti, Changwei Chen, Haoxin Chen, Sihang Chen, Qihan Chen, Zhongyu Chen, Ziyang Chen, Shing Shin Cheng, Meiqing Cheng, Min Cheng, Zih-Yun Sarah Chiu, Xiangyu Chu, Camilo Correa-Gallego, Giulio Dagnino, Anton Deguet, Jacob Delgado, Jonathan C. DeLong, Kaizhong Deng, Alexander Dimitrakakis, Qingpeng Ding, Hao Ding, Giovanni Distefano, Daniel Donoho, Anqing Duan, Marco Esposito, Shane Farritor, Jad Fayad, Zahi Fayad, Mario Ferradosa, Filippo Filicori, Chelsea Finn, Philipp Fürnstahl, Jiawei Ge, Stamatia Giannarou, Xavier Giralt Ludevid, Frederic Giraud, Aditya Amit Godbole, Ken Goldberg, Antony Goldenberg, Diego Granero Marana, Xiaoqing Guo, Tamás Haidegger, Evan Hailey, Pascal Hansen, Ziyi Hao, Kush Hari, Kengo Hayashi, Jonathon Hawkins, Shelby Haworth, Ortrun Hellig, S. Duke Herrell, Zhouyang Hong, Andrew Howe, Junlei Hu, Zhaoyang Jacopo Hu, Ria Jain, Mohammad Rafiee Javazm, Howard Ji, Rui Ji, Jianmin Ji, Zhongliang Jiang, Dominic Jones, Jeffrey Jopling, Britton Jordan, Ran Ju, Michael Kam, Luoyao Kang, Fausto Kang, Siddhartha Kapuria, Peter Kazanzides, Sonika Kiehler, Ethan Kilmer, Ji Woong Kim, Przemysław Korzeniowski, Chandra Kuchi
-* **Author Priority**: Core VIP
-* **为什么还值得留意**: Open-H-Embodiment 因 Chelsea Finn 和大规模医疗机器人数据集进入 watchlist；摘录明确给出 119 个数据集、780 小时 paired video/kinematics、50 多个机构和 20 个平台，数据规模本身值得长期跟踪。它没有进入最终精选，是因为论文更偏医疗机器人 foundation dataset 与 GR00T-H 迁移验证，和今天 VLA/world model 方法创新主线相比更像重要资源型论文。
+### [W3]. AffordanceVLA: A Vision-Language-Action Model Empowering Action Generation through Affordance-Aware Understanding [[HTML]](https://arxiv.org/html/2606.06155) [[PDF]](https://arxiv.org/pdf/2606.06155)
+* **Paper ID**: `2606.06155`
+* **Authors**: Qize Yu, Jiadi You, Yuran Wang, Jiaqi Liang, Bowen Ping, Yang Tian, Yue Chen, Minghong Cai, Zeying Gong, Ruihai Wu, Yinchuan Li, Junwei Liang, Yingcong Chen
+* **Author Priority**: Standard
+* **为什么还值得留意**: AffordanceVLA 进入 shortlist 是因为它试图用 Which2Act、Where2Act、How2Act 这类结构化 affordance forecasting 弥合 VLM 语义空间与机器人 3D 动作空间的错位。未进最终精选，是因为摘录显示方法和实验较像 VLA 中间表征增强，和今天更优先的后训练、闭环 world model、测试时扩展相比新范式冲击略弱；但 LIBERO/CALVIN 与真实任务结果仍值得上传 PDF 后检查。
+* **证据来源**: arXiv HTML (Introduction, Method, Experiments, Conclusion)
+
+### [W4]. TAM: Torque Adaptation Module for Robust Motion Transfer in Manipulation [[VIP]] [[HTML]](https://arxiv.org/html/2606.06218) [[PDF]](https://arxiv.org/pdf/2606.06218)
+* **Paper ID**: `2606.06218`
+* **Authors**: Dongwon Son, Florian Shkurti, Jason Lee, Naman Shah, Beomjoon Kim, Dieter Fox
+* **Author Priority**: Extended VIP
+* **为什么还值得留意**: TAM 值得进入 watchlist，因为 Dieter Fox 在作者中，且 torque-interface adaptation 直接面对 sim-to-real、payload 和机器人实例差异，对 contact-rich manipulation 很实用。它没有进入最终精选，是因为它主要是 torque adaptation/motion transfer 模块，并非 VLA 或 World Action Model 本体；但其“冻结策略、只适配底层 torque response”的思路可为 VLA 部署补强。
 * **证据来源**: arXiv HTML (Introduction, Method, Experiments, Conclusion)
